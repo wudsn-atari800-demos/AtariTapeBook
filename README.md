@@ -37,3 +37,13 @@ To use the original Atari OS and Atari BASIC, register your own ROM images in Al
 
 ## Editing
 The Atari BASIC files can be editing in Altirra by starting the "Altirra.bat" script followed by `LOAD "H:C1.BAS"`to load the program.
+
+## Project Members
+
+- Prof. Dr. Stefan Höltgen
+- Dr. Torsten Roeder
+- Stefan Meyer
+- Andreas Kahlenbach
+- Peter Dell
+
+
