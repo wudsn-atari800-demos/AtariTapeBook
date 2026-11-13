@@ -19,7 +19,7 @@ at that moment (before the boot code can modify itself), lets the whole tape
 play and prints the Atari screen.
 
 An input can carry an audio file for the left (audio) channel of its tape
-section, written as data=audio, e.g. Chapter1.bas=Chapter1Audio.wav.  The audio is
+section, written as data=audio, e.g. CHAPTER1.BAS=CHAPTER1AUDIO.WAV.  The audio is
 converted to the tape's sample rate and starts together with the section's
 leader; if it outlasts the data, the section is extended with silence on the
 data track.  The Atari plays this channel through the TV speaker while the
@@ -31,7 +31,7 @@ file's records are too far away.
 Usage:
     python Bin2Wav.py Boot.sec AtariTapeBook.wav
     python Bin2Wav.py Boot.sec program.bas AtariTapeBook.wav
-    python Bin2Wav.py Boot.sec Chapter1.bas=Chapter1Audio.wav Chapter2.bas=Chapter2Audio.wav AtariTapeBook.wav
+    python Bin2Wav.py Boot.sec CHAPTER1.BAS=CHAPTER1AUDIO.WAV CHAPTER2.BAS=CHAPTER2AUDIO.WAV AtariTapeBook.wav
 """
 
 import argparse
