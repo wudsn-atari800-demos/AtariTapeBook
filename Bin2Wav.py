@@ -37,6 +37,7 @@ import argparse
 from array import array
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -44,8 +45,13 @@ import tempfile
 import threading
 import wave
 
-TURGEN_DIR = r"C:\jac\system\Atari800\Tools\CAS\turgen-9.4.7"
-ALTIRRA_SDL_DIR = r"C:\jac\system\Atari800\Tools\EMU\AltirraSDL"
+
+def folder_in_path(program, option):
+    """Return the folder of a program found in the PATH, see Make-Settings.bat."""
+    path = shutil.which(program)
+    if not path:
+        raise SystemExit(f"{program} not found in the PATH; add its folder in Make-Settings.bat or use {option}")
+    return os.path.dirname(os.path.abspath(path))
 
 
 # ----------------------------------------------------------------------
@@ -246,10 +252,12 @@ def main():
     p.add_argument("--cas", action="store_true", help="also keep the .cas image next to the .wav")
     p.add_argument("--mono", action="store_true", help="write 8-bit mono instead of GENCAS' stereo 16-bit")
     p.add_argument("--no-verify", action="store_true", help="skip the AltirraBridge boot test")
-    p.add_argument("--turgen", default=TURGEN_DIR, help="TURGEN installation folder")
-    p.add_argument("--server-dir", default=ALTIRRA_SDL_DIR,
-                   help="folder containing AltirraBridgeServer.exe and sdk/")
+    p.add_argument("--turgen", help="TURGEN installation folder (default: the folder of gencas in the PATH)")
+    p.add_argument("--server-dir",
+                   help="folder containing AltirraBridgeServer.exe and sdk/ "
+                        "(default: the folder of AltirraBridgeServer in the PATH)")
     args = p.parse_args()
+    args.turgen = args.turgen or folder_in_path("gencas", "--turgen")
 
     inputs = list(args.files)
     output = inputs.pop() if len(inputs) > 1 and inputs[-1].lower().endswith(".wav") else None
@@ -305,7 +313,8 @@ def main():
     if len(boot) < 6 or boot[1] == 0:
         print("first file does not look like a boot file, skipping the boot test")
         return 0
-    return 0 if verify_boot(output, boot, args.server_dir) else 1
+    server_dir = args.server_dir or folder_in_path("AltirraBridgeServer", "--server-dir")
+    return 0 if verify_boot(output, boot, server_dir) else 1
 
 
 if __name__ == "__main__":
