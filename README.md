@@ -55,8 +55,9 @@ The Atari BASIC files can be editing in Altirra by starting the "Altirra.bat" sc
 The `test-chapters` folder contains an end-to-end test of the sync co-track, started with `test-chapters/TestChapters.bat`.
 It builds a tape with the boot code, a test program in `C1.BAS` and a run section with three cues from `C1A.TXT`, and plays it in the headless AltirraBridge emulator at real tape speed.
 The test passes if the program reports exactly three cues with the spacing of the cue file, using `basic_syncer` from the boot code.
-`C1.WAV` plays while the test program loads, and `C1A.WAV` is the audio of the run section with a beep at every cue.
-Both are generated tones and part of the repository. They are written again with `TestChapters.py --write-audio`, for example after changing the cues.
+`C1.WAV` plays while the test program loads, and `C1A.WAV` is the audio of the run section.
+In it, the label text of every cue is spoken before the cue and ends shortly before its pulse, so the screen changes when the text has been spoken.
+Both contain synthesized speech and are part of the repository. They are written again with `TestChapters.py --write-audio`, for example after changing the cues.
 The test keeps its tape as `TestChapters.wav`. `test-chapters/PlayChapters.bat` plays it in the Altirra window at real tape speed, so the test can also be followed and heard interactively. If the tape does not exist yet, it runs the test first.
 
 ## Project Members
