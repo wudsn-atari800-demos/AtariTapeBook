@@ -1,0 +1,6 @@
+*.lst
+*.lab
+*.atdbg
+*.wav
+__pycache__/
+/Boot.sec
