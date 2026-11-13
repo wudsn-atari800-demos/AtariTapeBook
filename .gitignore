@@ -2,6 +2,8 @@
 *.lab
 *.atdbg
 *.wav
+!/test-chapters/*.WAV
+/test-chapters/TestChapters.wav
 __pycache__/
 /boot/Boot.sec
 /build/
