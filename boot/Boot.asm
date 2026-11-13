@@ -3,9 +3,12 @@
 
 
 HATAB_SIZE = 16
+START_MOTOR = $34
+STOP_MOTOR = $3c
 
 ;
 BOOT	= $09
+RTCLK	= $12
 SOUNDR	= $41
 SDMCTL	= $22f
 COLOR4	= $2c8
@@ -14,6 +17,7 @@ COLDST	= $244
 CH	= $2FC
 CARTCS	= $bffa
 EDITRV	= $e400
+SKSTAT	= $d20f
 PACTL	= $d302
 DMACTL	= $d400
 vcount	= $d40b
@@ -29,14 +33,27 @@ load_address
 	.word load_address
 	.word booter
 
-	mva #$3c PACTL	; Stop tape
+	mva #STOP_MOTOR PACTL	; Stop tape
 	clc
 	rts
 
 	nop
-basic			; BASIC entry point
+
+basic_loader			; BASIC entry point
 	pla
 	jmp loader
+
+basic_syncer			; BASIC entry point
+	pla
+	jmp syncer
+
+	.proc wait
+	clc
+	adc RTCLK+2
+loop	cmp RTCLK+2
+	bne loop
+	rts
+	.endp
 
 	.proc booter
 	mva #$00 BOOT
@@ -95,3 +112,16 @@ char_cnt .byte 0
 HATABE	.ds HATAB_SIZE
 
 	.endp			; loader
+
+	.proc syncer
+	mva #START_MOTOR PACTL
+	lda #50			; Wait 1 s
+	jsr wait
+wait_sio
+	lda SKSTAT
+	and #$10
+	beq wait_sio
+	mva #STOP_MOTOR PACTL
+	rts
+	.endp
+

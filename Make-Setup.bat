@@ -19,6 +19,7 @@ call :install java bin\java.exe https://api.adoptium.net/v3/binary/latest/21/ga/
 call :install turgen dist\turgen.jar https://sourceforge.net/projects/turgen/files/latest/download tar.bz2 || exit /b 1
 call :install altirra-bridge AltirraBridgeServer.exe https://github.com/ilmenit/AltirraSDL/releases/download/nightly-bridge/AltirraBridge-nightly-windows-x86_64.zip zip || exit /b 1
 call :install altirra Altirra.exe https://www.virtualdub.org/downloads/Altirra-4.40.zip zip || exit /b 1
+call :install a8cas bin\a8cas-convert.exe https://sourceforge.net/projects/a8cas/files/a8cas-tools/1.3.1/a8cas-tools-1.3.1-liba8cas-1.5.0-win32.zip/download zip || exit /b 1
 echo All build tools are installed in the "build" folder.
 exit /b 0
 

@@ -27,6 +27,15 @@ the motor running (POKE 54018,52) until the audio has ended before it CLOADs
 the next file; a CLOAD issued earlier times out (error 138) because the next
 file's records are too far away.
 
+If a cue file with the same name as the audio file and the extension .TXT
+exists (e.g. C1.TXT next to C1.WAV), the data track under the rest of the
+audio carries a sync co-track instead of silence: a continuous space tone
+with a 335 ms mark pulse at every cue.  The program sees the pulses as bit 4
+of SKSTAT (53775) changing from 0 to 1 while the motor runs.  The cue file is
+an Audacity label export: one label per line, start time, end time and text
+separated by tabs, times in seconds from the start of the audio file.  Only
+the start time is used.  Cues must lie after the section's data records.
+
 Usage:
     python Bin2Wav.py Boot.sec AtariTapeBook.wav
     python Bin2Wav.py Boot.sec program.bas AtariTapeBook.wav
@@ -35,6 +44,7 @@ Usage:
 
 import argparse
 from array import array
+import math
 import os
 import re
 import shutil
@@ -131,8 +141,64 @@ def read_audio_mono16(path, rate):
     return samples
 
 
-def add_audio_track(data_wav, audio_wav, output):
-    """Put `audio_wav` on the left channel of the stereo 16-bit data tape `data_wav`."""
+MARK_HZ = 5327
+SPACE_HZ = 3995
+CUE_PULSE_S = 0.335         # length of a cue pulse, as on the "Conversational" tapes
+CUE_MIN_DISTANCE_S = 1.0    # closer cues are hard to see for a BASIC loop
+CUE_SPIN_UP_S = 2.0         # keep the first cue away from the motor start after the data
+
+
+def read_cues(path):
+    """Read an Audacity label export and return the start times in seconds."""
+    cues = []
+    with open(path, encoding="utf-8-sig") as f:
+        for n, line in enumerate(f, 1):
+            line = line.strip()
+            if not line or line.startswith("\\"):     # spectral selection lines of newer Audacity versions
+                continue
+            try:
+                cues.append(float(line.split("\t")[0]))
+            except ValueError:
+                raise SystemExit(f"{path}:{n}: expected a start time in seconds, found '{line}'")
+    return sorted(cues)
+
+
+def check_cues(path, cues, data_seconds, audio_seconds):
+    for t in cues:
+        if t < data_seconds:
+            raise SystemExit(f"{path}: cue at {t:.2f} s lies inside the data records, which end at {data_seconds:.2f} s")
+        if t + CUE_PULSE_S > audio_seconds:
+            raise SystemExit(f"{path}: cue at {t:.2f} s ends after the audio, which ends at {audio_seconds:.2f} s")
+    if cues and cues[0] < data_seconds + CUE_SPIN_UP_S:
+        print(f"warning: {path}: first cue at {cues[0]:.2f} s is less than {CUE_SPIN_UP_S:.0f} s "
+              f"after the data records, the motor may still be spinning up")
+    for a, b in zip(cues, cues[1:]):
+        if b - a < CUE_MIN_DISTANCE_S:
+            print(f"warning: {path}: cues at {a:.2f} s and {b:.2f} s are less than "
+                  f"{CUE_MIN_DISTANCE_S:.0f} s apart")
+
+
+def sync_cotrack(rate, start, end, cues, level):
+    """Return a phase-continuous FSK signal from sample `start` to `end`: space tone with mark pulses."""
+    pulses = [(int(t * rate), int((t + CUE_PULSE_S) * rate)) for t in cues]
+    out = array("h", bytes(2 * (end - start)))
+    phase, p = 0.0, 0
+    mark_step, space_step = 2 * math.pi * MARK_HZ / rate, 2 * math.pi * SPACE_HZ / rate
+    for i in range(start, end):
+        while p < len(pulses) and i >= pulses[p][1]:
+            p += 1
+        mark = p < len(pulses) and pulses[p][0] <= i
+        out[i - start] = int(level * math.sin(phase))
+        phase += mark_step if mark else space_step
+        if phase > 2 * math.pi:
+            phase -= 2 * math.pi
+    return out
+
+
+def add_audio_track(data_wav, audio_wav, output, cues=None, cue_file=None):
+    """Put `audio_wav` on the left channel of the stereo 16-bit data tape `data_wav`.
+
+    With `cues`, the data track under the rest of the audio gets the sync co-track."""
     with wave.open(data_wav, "rb") as w:
         if (w.getnchannels(), w.getsampwidth()) != (2, 2):
             raise SystemExit(f"{data_wav}: expected a stereo 16-bit tape from GENCAS")
@@ -143,6 +209,10 @@ def add_audio_track(data_wav, audio_wav, output):
     audio = read_audio_mono16(audio_wav, rate)
     data_seconds, audio_seconds = len(data) / rate, len(audio) / rate
     n = max(len(data), len(audio))
+    if cues:
+        check_cues(cue_file, cues, data_seconds, audio_seconds)
+        level = max(max(data), -min(data))
+        data.extend(sync_cotrack(rate, len(data), n, cues, level))
     data.extend([0] * (n - len(data)))
     audio.extend([0] * (n - len(audio)))
     out = array("h", bytes(4 * n))
@@ -282,12 +352,14 @@ def main():
             gencas(args.turgen, ["-mode:plain", *(["-a"] if i else ["-r"]), *gaps, src, cas])
             if audio:
                 mixed = os.path.join(tmp, f"mixed{i}.wav")
-                data_s, audio_s = add_audio_track(part, audio, mixed)
-                sections.append((src, data_s, audio, audio_s))
+                cue_file = os.path.splitext(audio)[0] + ".TXT"
+                cues = read_cues(cue_file) if os.path.exists(cue_file) else None
+                data_s, audio_s = add_audio_track(part, audio, mixed, cues, cue_file)
+                sections.append((src, data_s, audio, audio_s, cues))
                 part = mixed
             else:
                 with wave.open(part, "rb") as w:
-                    sections.append((src, w.getnframes() / w.getframerate(), None, 0))
+                    sections.append((src, w.getnframes() / w.getframerate(), None, 0, None))
             parts.append(part)
         concat_wavs(parts, output)
     if args.mono:
@@ -298,8 +370,10 @@ def main():
         fmt = f"{w.getframerate()} Hz, {w.getsampwidth() * 8}-bit, {'mono' if w.getnchannels() == 1 else 'stereo'}"
     print(f"{output}: {seconds:.1f} s, {fmt}, {len(inputs)} file(s)")
     start = 0.0
-    for src, data_s, audio, audio_s in sections:
+    for src, data_s, audio, audio_s, cues in sections:
         note = f", audio {os.path.basename(audio)} {audio_s:.1f} s on the left channel" if audio else ""
+        if cues:
+            note += f", {len(cues)} cue(s) from {cues[0]:.1f} s"
         print(f"  {start:6.1f} s: {os.path.basename(src)}, data {data_s:.1f} s{note}")
         start += max(data_s, audio_s)
     names = {0xFC: "data", 0xFA: "partial data", 0xFE: "EOF"}
