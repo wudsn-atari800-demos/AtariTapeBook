@@ -117,14 +117,13 @@ HATABE	.ds HATAB_SIZE
 	mva #START_MOTOR PACTL
 	lda #50			; Wait 1 s
 	jsr wait
+	lda #$10		; Mask for the serial input bit
 wait_sio_1			; Wait until SIO=1
-	lda SKSTAT
-	and #$10
+	bit SKSTAT
 	beq wait_sio_1
 wait_sio_0			; Wait until SIO=0 again
-	lda SKSTAT
-	and #$10
-	beq wait_sio_o
+	bit SKSTAT
+	bne wait_sio_0
 	mva #STOP_MOTOR PACTL
 	rts
 	.endp

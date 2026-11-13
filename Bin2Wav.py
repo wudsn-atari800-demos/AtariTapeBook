@@ -32,6 +32,10 @@ without extension, and the files with that base name decide its type:
   co-track: a continuous space tone with a 335 ms mark pulse at every cue
   from <base>.TXT.  Without a .TXT file there are no pulses.  The program
   sees the pulses as bit 4 of SKSTAT (53775) changing from 0 to 1.
+  If the run section follows a load section, the data track of the load
+  section is replaced by space tone from its end-of-file record on.  CLOAD
+  does not read that record, and its data bits as well as the silence after
+  it would otherwise be read as pulses when the program starts the motor.
 - A load section must not have a .TXT file; cues belong to run sections.
 
 The Atari plays the left channel through the TV speaker while the tape motor
@@ -188,11 +192,12 @@ def check_cues(path, cues, audio_seconds):
                   f"{CUE_MIN_DISTANCE_S:.0f} s apart")
 
 
-def sync_cotrack(rate, n, cues, level):
-    """Return `n` samples of phase-continuous FSK: space tone with a mark pulse at each cue time."""
+def sync_cotrack(rate, n, cues, level, phase=0.0):
+    """Return `n` samples of phase-continuous FSK, space tone with a mark pulse at each cue time,
+    and the phase at the end."""
     pulses = [(int(t * rate), int((t + CUE_PULSE_S) * rate)) for t in cues]
     out = array("h", bytes(2 * n))
-    phase, p = 0.0, 0
+    p = 0
     mark_step, space_step = 2 * math.pi * MARK_HZ / rate, 2 * math.pi * SPACE_HZ / rate
     for i in range(n):
         while p < len(pulses) and i >= pulses[p][1]:
@@ -202,7 +207,7 @@ def sync_cotrack(rate, n, cues, level):
         phase += mark_step if mark else space_step
         if phase > 2 * math.pi:
             phase -= 2 * math.pi
-    return out
+    return out, phase
 
 
 def data_track_format(data_wav):
@@ -226,7 +231,7 @@ def write_stereo(output, rate, left, right):
         w.writeframes(out.tobytes())
 
 
-def make_run_section(audio_wav, cue_file, rate, level, output):
+def make_run_section(audio_wav, cue_file, rate, level, output, phase=0.0):
     """Write a run section: lead-in plus audio on the left, the sync co-track on the right."""
     audio = read_audio_mono16(audio_wav, rate)
     audio_seconds = len(audio) / rate
@@ -234,9 +239,51 @@ def make_run_section(audio_wav, cue_file, rate, level, output):
     check_cues(cue_file, cues, audio_seconds)
     lead_in = int(AUDIO_LEAD_IN_S * rate)
     left = array("h", bytes(2 * lead_in)) + audio
-    right = sync_cotrack(rate, len(left), [AUDIO_LEAD_IN_S + t for t in cues], level)
+    right, _ = sync_cotrack(rate, len(left), [AUDIO_LEAD_IN_S + t for t in cues], level, phase)
     write_stereo(output, rate, left, right)
     return len(left) / rate, audio_seconds, cues
+
+
+def silence_eof_record(load_wav, level):
+    """Replace the data track of a load section from its end-of-file record on with space tone.
+
+    CLOAD stops reading after the last data record, so the end-of-file record and the
+    silence GENCAS writes after it are still on the tape when the program starts the motor
+    for the following run section.  Their data bits and the noise Altirra and a real
+    recorder decode from the silence would look like cue pulses.  The mark tone gap before
+    the end-of-file record is kept; it passes while the program waits for the motor.
+    Return the seconds replaced and the phase at the end, for the run section to continue."""
+    with wave.open(load_wav, "rb") as w:
+        rate = w.getframerate()
+        frames = array("h")
+        frames.frombytes(w.readframes(w.getnframes()))
+    data = frames[1::2]
+    # The end of the last record is the last sign change; GENCAS' silence is a constant offset.
+    end = next((i for i in range(len(data) - 1, 0, -1) if (data[i - 1] < 0) != (data[i] < 0)), 0)
+    # Going back from there, the gap before the end-of-file record is the last stretch of
+    # mark tone (full periods below the split between mark and space) longer than 100 ms.
+    split = rate / ((MARK_HZ + SPACE_HZ) / 2)
+    crossings = [i for i in range(max(1, end - int(4 * rate)), end + 1) if (data[i - 1] < 0) != (data[i] < 0)]
+    eof_start, run_end = None, None
+    for k in range(len(crossings) - 3, -1, -1):
+        is_mark = crossings[k + 2] - crossings[k] < split
+        if is_mark and run_end is None:
+            run_end = crossings[k + 2]
+        elif not is_mark:
+            if run_end is not None and run_end - crossings[k + 1] > 0.1 * rate:
+                eof_start = run_end
+                break
+            run_end = None
+    if eof_start is None:
+        raise SystemExit(f"{load_wav}: the gap before the end-of-file record was not found")
+    tone, phase = sync_cotrack(rate, len(data) - eof_start, [], level)
+    frames[2 * eof_start + 1::2] = tone
+    with wave.open(load_wav, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(frames.tobytes())
+    return (len(data) - eof_start) / rate, phase
 
 
 def add_audio_track(data_wav, audio_wav, output):
@@ -416,7 +463,12 @@ def main():
                         data_s = w.getnframes() / w.getframerate()
                     overview.append((data_s, f"load {os.path.basename(program)}, records {data_s:.1f} s"))
             else:
-                section_s, audio_s, cues = make_run_section(audio, cue_file, rate, level, part)
+                phase = 0.0
+                if inputs[i - 1][0]:                   # follows a load section
+                    replaced_s, phase = silence_eof_record(parts[-1], level)
+                    overview[-1] = (overview[-1][0], overview[-1][1] +
+                                    f", last {replaced_s:.1f} s of the data track replaced by space tone")
+                section_s, audio_s, cues = make_run_section(audio, cue_file, rate, level, part, phase)
                 cue_note = f"{len(cues)} cue(s) from {cues[0]:.1f} s" if cues else "no cues"
                 overview.append((section_s, f"run {os.path.basename(audio)}, {AUDIO_LEAD_IN_S:.1f} s lead-in, "
                                             f"audio {audio_s:.1f} s, {cue_note}"))
