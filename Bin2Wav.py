@@ -363,6 +363,7 @@ def verify_boot(wav_path, content, server_dir):
         with AltirraBridge.from_token_file(token_file) as a:
             a.config("basic", "on")
             a.config("casautoboot", "on")
+            a.config("siopatch", "off")             # load at real tape speed, like the project's Altirra runs
             a.bp_set(init_addr)
             a.boot(os.path.abspath(wav_path))
             for _ in range(120):                   # up to 100 s of emulated time
