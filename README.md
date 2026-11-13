@@ -13,11 +13,18 @@ The short IRGs reducde the loading time.
 
 ## Folders
 The chapters of the book are stored in the `chapters` folder.
-For every chapter there is a `C<n>.BAS` file in tokenized Atari BASIC format and a `C<n>.WAV` file wich can be in mono or stereo format.
-The build process automatically converts the `C<n>.WAV` file to a mono track in the output format of the tape.
-An optional `C<n>.TXT` file contains cue points for the audio, exported from an Audacity label track.
-For every cue point, the build writes a sync pulse on the data track while the audio plays, which the program can read from `SKSTAT` to keep the screen in step with the speech.
-Cue points must lie after the end of the chapter's data records, see `test/Conversational-German/ANALYSIS.md`.
+The tape consists of sections, which `Makefile.bat` lists in tape order by their base name, for example `chapters/C1`.
+The files with that base name decide the type of a section:
+
+| Files | Section type |
+|-------|--------------|
+| `.BAS`, optionally `.WAV` | Load section. The tokenized Atari BASIC program is loaded with `CLOAD`, and the audio plays while it loads. |
+| `.WAV`, optionally `.TXT` | Run section. The audio plays while the loaded program runs, after a lead-in of one second while the motor spins up. |
+
+The `.WAV` files can be in mono or stereo format. The build process converts them to a mono track in the output format of the tape.
+The `.TXT` file of a run section contains cue points for the audio, exported from an Audacity label track.
+For every cue point, the build writes a sync pulse on the data track, which the program can read from `SKSTAT` to keep the screen in step with the speech, see `test/Conversational-German/ANALYSIS.md`.
+A load section cannot have a `.TXT` file.
 
 
 ## Build Tools

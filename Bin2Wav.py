@@ -17,29 +17,38 @@ The script also builds the .cas image to list the records, then boots the
 init vector and compares the memory at the load address with the file
 content at that moment (before the boot code can modify itself).
 
-An input can carry an audio file for the left (audio) channel of its tape
-section, written as data=audio, e.g. C1.BAS=C1AUDIO.WAV.  The audio is
-converted to the tape's sample rate and starts together with the section's
-leader; if it outlasts the data, the section is extended with silence on the
-data track.  The Atari plays this channel through the TV speaker while the
-tape motor runs.  If the audio is longer than the data, the program must keep
-the motor running (POKE 54018,52) until the audio has ended before it CLOADs
-the next file; a CLOAD issued earlier times out (error 138) because the next
-file's records are too far away.
+The tape is a sequence of sections, given in tape order.  The first one is
+the boot file.  Every further section is given as a file or as a base name
+without extension, and the files with that base name decide its type:
 
-If a cue file with the same name as the audio file and the extension .TXT
-exists (e.g. C1.TXT next to C1.WAV), the data track under the rest of the
-audio carries a sync co-track instead of silence: a continuous space tone
-with a 335 ms mark pulse at every cue.  The program sees the pulses as bit 4
-of SKSTAT (53775) changing from 0 to 1 while the motor runs.  The cue file is
-an Audacity label export: one label per line, start time, end time and text
-separated by tabs, times in seconds from the start of the audio file.  Only
-the start time is used.  Cues must lie after the section's data records.
+- Load section: a program file exists, either the given file or <base>.BAS.
+  Its records are written by GENCAS.  An optional <base>.WAV is put on the
+  left (audio) channel and starts together with the section's leader, so it
+  plays while the program loads.  If it outlasts the records, the data track
+  is extended with silence.
+- Run section: no program file, but <base>.WAV exists.  It is played while
+  the loaded program runs.  The audio starts after a lead-in of silence, so
+  the motor can reach its speed first.  The data track carries the sync
+  co-track: a continuous space tone with a 335 ms mark pulse at every cue
+  from <base>.TXT.  Without a .TXT file there are no pulses.  The program
+  sees the pulses as bit 4 of SKSTAT (53775) changing from 0 to 1.
+- A load section must not have a .TXT file; cues belong to run sections.
+
+The Atari plays the left channel through the TV speaker while the tape motor
+runs.  The program must keep the motor running (POKE 54018,52) until the
+audio has ended before it CLOADs the next file; a CLOAD issued earlier times
+out (error 138) because the next file's records are too far away.
+
+The cue file is an Audacity label export: one label per line, start time,
+end time and text separated by tabs, times in seconds from the start of the
+audio file.  Only the start time is used.
+
+The .cas image only contains the records of the load sections.
 
 Usage:
     python Bin2Wav.py Boot.sec AtariTapeBook.wav
     python Bin2Wav.py Boot.sec program.bas AtariTapeBook.wav
-    python Bin2Wav.py Boot.sec C1.BAS=C1AUDIO.WAV C2.BAS=C2AUDIO.WAV AtariTapeBook.wav
+    python Bin2Wav.py boot/Boot.sec chapters/C1 chapters/C1A chapters/C2 AtariTapeBook.wav
 """
 
 import argparse
@@ -145,7 +154,8 @@ MARK_HZ = 5327
 SPACE_HZ = 3995
 CUE_PULSE_S = 0.335         # length of a cue pulse, as on the "Conversational" tapes
 CUE_MIN_DISTANCE_S = 1.0    # closer cues are hard to see for a BASIC loop
-CUE_SPIN_UP_S = 2.0         # keep the first cue away from the motor start after the data
+CUE_SPIN_UP_S = 2.0         # keep the first cue away from the motor start
+AUDIO_LEAD_IN_S = 1.0       # silence before the audio of a run section, while the motor spins up
 
 
 def read_cues(path):
@@ -163,42 +173,74 @@ def read_cues(path):
     return sorted(cues)
 
 
-def check_cues(path, cues, data_seconds, audio_seconds):
+def check_cues(path, cues, audio_seconds):
     for t in cues:
-        if t < data_seconds:
-            raise SystemExit(f"{path}: cue at {t:.2f} s lies inside the data records, which end at {data_seconds:.2f} s")
+        if t < 0:
+            raise SystemExit(f"{path}: cue at {t:.2f} s lies before the start of the audio")
         if t + CUE_PULSE_S > audio_seconds:
             raise SystemExit(f"{path}: cue at {t:.2f} s ends after the audio, which ends at {audio_seconds:.2f} s")
-    if cues and cues[0] < data_seconds + CUE_SPIN_UP_S:
-        print(f"warning: {path}: first cue at {cues[0]:.2f} s is less than {CUE_SPIN_UP_S:.0f} s "
-              f"after the data records, the motor may still be spinning up")
+    if cues and AUDIO_LEAD_IN_S + cues[0] < CUE_SPIN_UP_S:
+        print(f"warning: {path}: first cue at {cues[0]:.2f} s is less than {CUE_SPIN_UP_S:.0f} s after the "
+              f"motor start ({AUDIO_LEAD_IN_S:.0f} s lead-in included), the motor may still be spinning up")
     for a, b in zip(cues, cues[1:]):
         if b - a < CUE_MIN_DISTANCE_S:
             print(f"warning: {path}: cues at {a:.2f} s and {b:.2f} s are less than "
                   f"{CUE_MIN_DISTANCE_S:.0f} s apart")
 
 
-def sync_cotrack(rate, start, end, cues, level):
-    """Return a phase-continuous FSK signal from sample `start` to `end`: space tone with mark pulses."""
+def sync_cotrack(rate, n, cues, level):
+    """Return `n` samples of phase-continuous FSK: space tone with a mark pulse at each cue time."""
     pulses = [(int(t * rate), int((t + CUE_PULSE_S) * rate)) for t in cues]
-    out = array("h", bytes(2 * (end - start)))
+    out = array("h", bytes(2 * n))
     phase, p = 0.0, 0
     mark_step, space_step = 2 * math.pi * MARK_HZ / rate, 2 * math.pi * SPACE_HZ / rate
-    for i in range(start, end):
+    for i in range(n):
         while p < len(pulses) and i >= pulses[p][1]:
             p += 1
         mark = p < len(pulses) and pulses[p][0] <= i
-        out[i - start] = int(level * math.sin(phase))
+        out[i] = int(level * math.sin(phase))
         phase += mark_step if mark else space_step
         if phase > 2 * math.pi:
             phase -= 2 * math.pi
     return out
 
 
-def add_audio_track(data_wav, audio_wav, output, cues=None, cue_file=None):
-    """Put `audio_wav` on the left channel of the stereo 16-bit data tape `data_wav`.
+def data_track_format(data_wav):
+    """Return the sample rate and the peak level of the data track of a GENCAS .wav."""
+    with wave.open(data_wav, "rb") as w:
+        rate, channels = w.getframerate(), w.getnchannels()
+        frames = array("h")
+        frames.frombytes(w.readframes(w.getnframes()))
+    data = frames[channels - 1::channels]
+    return rate, max(max(data), -min(data))
 
-    With `cues`, the data track under the rest of the audio gets the sync co-track."""
+
+def write_stereo(output, rate, left, right):
+    out = array("h", bytes(4 * len(left)))
+    out[0::2] = left
+    out[1::2] = right
+    with wave.open(output, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(out.tobytes())
+
+
+def make_run_section(audio_wav, cue_file, rate, level, output):
+    """Write a run section: lead-in plus audio on the left, the sync co-track on the right."""
+    audio = read_audio_mono16(audio_wav, rate)
+    audio_seconds = len(audio) / rate
+    cues = read_cues(cue_file) if cue_file else []
+    check_cues(cue_file, cues, audio_seconds)
+    lead_in = int(AUDIO_LEAD_IN_S * rate)
+    left = array("h", bytes(2 * lead_in)) + audio
+    right = sync_cotrack(rate, len(left), [AUDIO_LEAD_IN_S + t for t in cues], level)
+    write_stereo(output, rate, left, right)
+    return len(left) / rate, audio_seconds, cues
+
+
+def add_audio_track(data_wav, audio_wav, output):
+    """Put `audio_wav` on the left channel of the stereo 16-bit data tape `data_wav`."""
     with wave.open(data_wav, "rb") as w:
         if (w.getnchannels(), w.getsampwidth()) != (2, 2):
             raise SystemExit(f"{data_wav}: expected a stereo 16-bit tape from GENCAS")
@@ -209,20 +251,9 @@ def add_audio_track(data_wav, audio_wav, output, cues=None, cue_file=None):
     audio = read_audio_mono16(audio_wav, rate)
     data_seconds, audio_seconds = len(data) / rate, len(audio) / rate
     n = max(len(data), len(audio))
-    if cues:
-        check_cues(cue_file, cues, data_seconds, audio_seconds)
-        level = max(max(data), -min(data))
-        data.extend(sync_cotrack(rate, len(data), n, cues, level))
     data.extend([0] * (n - len(data)))
     audio.extend([0] * (n - len(audio)))
-    out = array("h", bytes(4 * n))
-    out[0::2] = audio
-    out[1::2] = data
-    with wave.open(output, "wb") as w:
-        w.setnchannels(2)
-        w.setsampwidth(2)
-        w.setframerate(rate)
-        w.writeframes(out.tobytes())
+    write_stereo(output, rate, audio, data)
     return data_seconds, audio_seconds
 
 
@@ -311,10 +342,30 @@ def verify_boot(wav_path, content, server_dir):
 
 # ----------------------------------------------------------------------
 
+def resolve_section(spec, first):
+    """Return (program file, audio file, cue file) of a section, each None if absent."""
+    def existing(path):
+        return path if os.path.isfile(path) else None
+
+    if os.path.isfile(spec):
+        base, program = os.path.splitext(spec)[0], spec
+    else:
+        base, program = spec, existing(spec + ".BAS")
+    audio, cues = existing(base + ".WAV"), existing(base + ".TXT")
+    if first and not program:
+        raise SystemExit(f"{spec}: the first section must be the boot file")
+    if program and cues:
+        raise SystemExit(f"{spec}: a load section ({program}) cannot have cues ({cues}); "
+                         f"put the audio and the cues into a run section of their own")
+    if not program and not audio:
+        raise SystemExit(f"{spec}: neither a program (.BAS) nor audio (.WAV) found")
+    return program, audio, cues
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("files", nargs="+",
-                   help="boot file, optional further files to chain, and optionally the output .wav last")
+                   help="boot file, further sections as files or base names, and optionally the output .wav last")
     p.add_argument("--short-irg", action="store_true",
                    help="short inter-record gaps for the boot file too (default: long, as MyDOS writes them)")
     p.add_argument("--short-leader", action="store_true",
@@ -329,11 +380,11 @@ def main():
     args = p.parse_args()
     args.turgen = args.turgen or folder_in_path("gencas", "--turgen")
 
-    inputs = list(args.files)
-    output = inputs.pop() if len(inputs) > 1 and inputs[-1].lower().endswith(".wav") else None
-    inputs = [(spec.split("=", 1) + [None])[:2] for spec in inputs]      # (data file, audio file or None)
+    specs = list(args.files)
+    output = specs.pop() if len(specs) > 1 and specs[-1].lower().endswith(".wav") else None
+    inputs = [resolve_section(spec, i == 0) for i, spec in enumerate(specs)]
     output = output or os.path.splitext(os.path.basename(inputs[0][0]))[0].title() + ".wav"
-    if args.mono and any(audio for _, audio in inputs):
+    if args.mono and any(audio for _, audio, _ in inputs):
         raise SystemExit("--mono cannot be combined with audio tracks")
     with open(inputs[0][0], "rb") as f:
         boot = f.read()
@@ -341,25 +392,34 @@ def main():
         os.path.join(tempfile.gettempdir(), os.path.splitext(os.path.basename(output))[0] + ".cas")
 
     parts = []
-    sections = []
+    overview = []                      # (seconds, description)
+    rate = level = None
     with tempfile.TemporaryDirectory() as tmp:
-        for i, (src, audio) in enumerate(inputs):
-            gaps = [] if i or args.short_irg else ["-long"]
-            if args.short_leader:
-                gaps.append("-s")
+        for i, (program, audio, cue_file) in enumerate(inputs):
             part = os.path.join(tmp, f"part{i}.wav")
-            gencas(args.turgen, ["-mode:plain", "-r", *gaps, "-o:wav", src, part])
-            gencas(args.turgen, ["-mode:plain", *(["-a"] if i else ["-r"]), *gaps, src, cas])
-            if audio:
-                mixed = os.path.join(tmp, f"mixed{i}.wav")
-                cue_file = os.path.splitext(audio)[0] + ".TXT"
-                cues = read_cues(cue_file) if os.path.exists(cue_file) else None
-                data_s, audio_s = add_audio_track(part, audio, mixed, cues, cue_file)
-                sections.append((src, data_s, audio, audio_s, cues))
-                part = mixed
+            if program:
+                gaps = [] if i or args.short_irg else ["-long"]
+                if args.short_leader:
+                    gaps.append("-s")
+                gencas(args.turgen, ["-mode:plain", "-r", *gaps, "-o:wav", program, part])
+                gencas(args.turgen, ["-mode:plain", *(["-a"] if i else ["-r"]), *gaps, program, cas])
+                if rate is None:
+                    rate, level = data_track_format(part)
+                if audio:
+                    mixed = os.path.join(tmp, f"mixed{i}.wav")
+                    data_s, audio_s = add_audio_track(part, audio, mixed)
+                    part = mixed
+                    overview.append((max(data_s, audio_s), f"load {os.path.basename(program)}, records {data_s:.1f} s, "
+                                                           f"audio {os.path.basename(audio)} {audio_s:.1f} s"))
+                else:
+                    with wave.open(part, "rb") as w:
+                        data_s = w.getnframes() / w.getframerate()
+                    overview.append((data_s, f"load {os.path.basename(program)}, records {data_s:.1f} s"))
             else:
-                with wave.open(part, "rb") as w:
-                    sections.append((src, w.getnframes() / w.getframerate(), None, 0, None))
+                section_s, audio_s, cues = make_run_section(audio, cue_file, rate, level, part)
+                cue_note = f"{len(cues)} cue(s) from {cues[0]:.1f} s" if cues else "no cues"
+                overview.append((section_s, f"run {os.path.basename(audio)}, {AUDIO_LEAD_IN_S:.1f} s lead-in, "
+                                            f"audio {audio_s:.1f} s, {cue_note}"))
             parts.append(part)
         concat_wavs(parts, output)
     if args.mono:
@@ -368,14 +428,11 @@ def main():
     with wave.open(output, "rb") as w:
         seconds = w.getnframes() / w.getframerate()
         fmt = f"{w.getframerate()} Hz, {w.getsampwidth() * 8}-bit, {'mono' if w.getnchannels() == 1 else 'stereo'}"
-    print(f"{output}: {seconds:.1f} s, {fmt}, {len(inputs)} file(s)")
+    print(f"{output}: {seconds:.1f} s, {fmt}, {len(inputs)} section(s)")
     start = 0.0
-    for src, data_s, audio, audio_s, cues in sections:
-        note = f", audio {os.path.basename(audio)} {audio_s:.1f} s on the left channel" if audio else ""
-        if cues:
-            note += f", {len(cues)} cue(s) from {cues[0]:.1f} s"
-        print(f"  {start:6.1f} s: {os.path.basename(src)}, data {data_s:.1f} s{note}")
-        start += max(data_s, audio_s)
+    for section_s, description in overview:
+        print(f"  {start:6.1f} s: {description}")
+        start += section_s
     names = {0xFC: "data", 0xFA: "partial data", 0xFE: "EOF"}
     for n, (ctrl, _, gap) in enumerate(cas_records(cas), 1):
         print(f"  record {n}: {names.get(ctrl, f'${ctrl:02X}')}, {gap / 1000:.2f} s gap before it")

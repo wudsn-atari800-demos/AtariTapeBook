@@ -18,8 +18,8 @@ Atari BASIC has no bitwise `AND`, so the program extracts the bit with the `INT`
 The programs also write to 54018 (`PACTL`), which controls the tape motor, so the motor keeps running while the audio plays.
 
 ## Creating a Sync Co-Track
-1. **Mark the cue points in each audio file.** For example in Audacity: put a label at every point where the screen should change and export the labels as a text file, for example `C1.TXT` next to `C1.WAV`.
-2. **Generate the co-track in `Bin2Wav.py`.** It currently fills the data track with silence while a section's audio plays. Instead, it writes a continuous space tone with a 335 ms mark pulse at each label time. The tones must be phase-continuous sine waves at the same level as the GENCAS data. GENCAS cannot produce this kind of signal, but a few lines of Python can.
+1. **Mark the cue points in each audio file.** For example in Audacity: put a label at every point where the screen should change and export the labels as a text file. The audio and the cues form a run section of their own, for example `C1A.WAV` and `C1A.TXT`, which follows the load section `C1.BAS` on the tape.
+2. **Generate the co-track in `Bin2Wav.py`.** For a run section it writes a continuous space tone with a 335 ms mark pulse at each label time, after a one-second lead-in for the motor. The tones are phase-continuous sine waves at the same level as the GENCAS data. GENCAS cannot produce this kind of signal, so `Bin2Wav.py` generates it itself.
 3. **Wait for the pulses in each chapter program.** Turn the motor on with `POKE 54018,52`. Then poll the bit in a loop and treat each change from 0 to 1 as the next cue. A 335 ms pulse is long enough for a BASIC loop to see it reliably.
 
 Two details matter:
