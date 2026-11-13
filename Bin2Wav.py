@@ -14,12 +14,11 @@ starting the motor before it reads.
 
 The script also builds the .cas image to list the records, then boots the
 .wav in the headless AltirraBridgeServer with a breakpoint on the boot file's
-init vector, compares the memory at the load address with the file content
-at that moment (before the boot code can modify itself), lets the whole tape
-play and prints the Atari screen.
+init vector and compares the memory at the load address with the file
+content at that moment (before the boot code can modify itself).
 
 An input can carry an audio file for the left (audio) channel of its tape
-section, written as data=audio, e.g. CHAPTER1.BAS=CHAPTER1AUDIO.WAV.  The audio is
+section, written as data=audio, e.g. C1.BAS=C1AUDIO.WAV.  The audio is
 converted to the tape's sample rate and starts together with the section's
 leader; if it outlasts the data, the section is extended with silence on the
 data track.  The Atari plays this channel through the TV speaker while the
@@ -31,7 +30,7 @@ file's records are too far away.
 Usage:
     python Bin2Wav.py Boot.sec AtariTapeBook.wav
     python Bin2Wav.py Boot.sec program.bas AtariTapeBook.wav
-    python Bin2Wav.py Boot.sec CHAPTER1.BAS=CHAPTER1AUDIO.WAV CHAPTER2.BAS=CHAPTER2AUDIO.WAV AtariTapeBook.wav
+    python Bin2Wav.py Boot.sec C1.BAS=C1AUDIO.WAV C2.BAS=C2AUDIO.WAV AtariTapeBook.wav
 """
 
 import argparse
@@ -199,21 +198,7 @@ def start_server(server_dir):
     return proc, token_file
 
 
-def screen_lines(a):
-    savmsc = a.peek16(0x58)
-    raw = a.peek(savmsc, 40 * 24)
-    lines = []
-    for row in range(24):
-        chars = []
-        for code in raw[row * 40:(row + 1) * 40]:
-            code &= 0x7F
-            ascii_code = code + 0x20 if code < 0x40 else (code - 0x40 if code < 0x60 else code)
-            chars.append(chr(ascii_code) if 0x20 <= ascii_code < 0x7F else "?")
-        lines.append("".join(chars).rstrip())
-    return [ln for ln in lines if ln]
-
-
-def verify_boot(wav_path, content, seconds, server_dir, png_path):
+def verify_boot(wav_path, content, server_dir):
     sys.path.insert(0, os.path.join(server_dir, "sdk", "python"))
     from altirra_bridge import AltirraBridge  # noqa: E402
 
@@ -224,7 +209,7 @@ def verify_boot(wav_path, content, seconds, server_dir, png_path):
         with AltirraBridge.from_token_file(token_file) as a:
             a.config("basic", "on")
             a.config("casautoboot", "on")
-            bp = a.bp_set(init_addr)
+            a.bp_set(init_addr)
             a.boot(os.path.abspath(wav_path))
             for _ in range(120):                   # up to 100 s of emulated time
                 a.frame(50)
@@ -239,30 +224,6 @@ def verify_boot(wav_path, content, seconds, server_dir, png_path):
             bad = [i for i in range(len(content)) if mem[i] != content[i]]
             print(f"boot test: at init ${init_addr:04X} the {len(content)} bytes at ${load_addr:04X} "
                   f"{'match the file' if ok else 'differ at offsets ' + str(bad[:10])}")
-            a.bp_clear(bp)
-            a.resume()
-            # Let the rest of the tape play; when the screen stops changing the
-            # program is probably waiting for a key, so press one.
-            remaining = int(seconds * 60) + 600
-            previous = None
-            stalled = False
-            while remaining > 0:
-                a.frame(min(300, remaining))
-                remaining -= 300
-                a.ping()
-                current = screen_lines(a)
-                if current == previous:
-                    a.key("SPACE")
-                    if not stalled:
-                        print(f"  (screen unchanged after '{current[-1] if current else ''}', pressing a key)")
-                    stalled = True
-                else:
-                    stalled = False
-                previous = current
-            for ln in screen_lines(a):
-                print("  screen:", ln)
-            if png_path:
-                a.screenshot(path=os.path.abspath(png_path))
             a.quit()
     finally:
         try:
@@ -285,7 +246,6 @@ def main():
     p.add_argument("--cas", action="store_true", help="also keep the .cas image next to the .wav")
     p.add_argument("--mono", action="store_true", help="write 8-bit mono instead of GENCAS' stereo 16-bit")
     p.add_argument("--no-verify", action="store_true", help="skip the AltirraBridge boot test")
-    p.add_argument("--no-screenshot", action="store_true")
     p.add_argument("--turgen", default=TURGEN_DIR, help="TURGEN installation folder")
     p.add_argument("--server-dir", default=ALTIRRA_SDL_DIR,
                    help="folder containing AltirraBridgeServer.exe and sdk/")
@@ -345,8 +305,7 @@ def main():
     if len(boot) < 6 or boot[1] == 0:
         print("first file does not look like a boot file, skipping the boot test")
         return 0
-    png = None if args.no_screenshot else os.path.splitext(output)[0] + ".png"
-    return 0 if verify_boot(output, boot, seconds, args.server_dir, png) else 1
+    return 0 if verify_boot(output, boot, args.server_dir) else 1
 
 
 if __name__ == "__main__":

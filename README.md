@@ -11,3 +11,10 @@ The short IRGs reducde the loading time.
 
 # Folder
 The chapters of the book are stored in the "chapters" folder.
+For every chapter there is a "C<n>.BAS" file in tokenized Atari BASIC format and a "C<N>.WAV" file wich can be in mono or stereo format.
+The build process automatically converts the ".WAV" file to a mono track in the output format of the tape.
+
+
+# Editing
+The Atari BASIC files can be editing in Altirra by starting the "Altirra.bat" script followed by `LOAD "H:C1.BAS"`to load the program.
+ 
