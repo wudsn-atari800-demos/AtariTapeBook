@@ -20,18 +20,20 @@ The build is started with `Makefile.bat` and requires the following tools.
 
 | Tool | Version | Download | Purpose |
 |------|---------|----------|---------|
-| MADS | 2.1.7 | [Mad-Assembler](https://github.com/tebe6502/Mad-Assembler) | Assembles `boot/Boot.asm` to `boot/Boot.sec`. |
 | Python | 3.9 or later | [python.org](https://www.python.org/downloads/) | Runs `Bin2Wav.py`, which builds the tape. Only the standard library is used. |
-| Java | 21 | [Adoptium](https://adoptium.net/) | Runs TURGEN. |
-| TURGEN | 9.4.7 | [TURGEN](https://turgen.sourceforge.io/) | Its GENCAS tool converts the boot file and the BASIC programs to 600 baud tape records. |
+| MADS | latest | [WUDSN IDE Tools](https://github.com/wudsn/wudsn-ide-tools) | Assembles `boot/Boot.asm` to `boot/Boot.sec`. |
+| Java | 21, latest update | [Adoptium](https://adoptium.net/) | Runs TURGEN. |
+| TURGEN | latest | [TURGEN](https://turgen.sourceforge.io/) | Its GENCAS tool converts the boot file and the BASIC programs to 600 baud tape records. |
 | AltirraBridge | nightly | [AltirraSDL releases](https://github.com/ilmenit/AltirraSDL/releases/tag/nightly-bridge) | Headless Altirra that boots the new tape and checks the boot file. |
-| Altirra | 4.50 | [Altirra](https://www.virtualdub.org/altirra.html) | Plays the tape after the build and is used to edit the BASIC programs. |
+| Altirra | 4.40 | [Altirra](https://www.virtualdub.org/altirra.html) | Plays the tape after the build and is used to edit the BASIC programs. |
 
-The tools are added as follows.
-- Each tool is installed or unpacked into a folder of its own. TURGEN and AltirraBridge stay in their unpacked folder structure, because `Bin2Wav.py` loads `dist/turgen.jar` and the AltirraBridge Python SDK from there.
-- For AltirraBridge, the `AltirraBridge-<version>-windows-x86_64` package from the release page is used. Its Python SDK does not have to be installed with `pip`.
-- The folders of the tools are entered in `Make-Settings.bat`. It adds them to the `PATH`, and `Makefile.bat` and `Altirra.bat` call it first. It is the only file with machine-specific folders.
-- Python is expected in the `PATH` already. Tools that are already in the `PATH` can be left out of `Make-Settings.bat`.
+Python is installed globally, for example with the installer from python.org or with `winget install Python.Python.3.13`.
+All other tools are downloaded by `Make-Setup.bat` into the `build` folder, which is not part of the repository.
+Run it once before the first build. Tools that are already there are kept, so delete a tool's folder in `build` to get its latest version.
+`Make-Settings.bat` adds the folders in `build` to the `PATH`. `Makefile.bat` and `Altirra.bat` call it first.
+
+The downloaded Altirra starts with its built-in AltirraOS and Altirra BASIC.
+To use the original Atari OS and Atari BASIC, register your own ROM images in Altirra under System, Firmware.
 
 ## Editing
 The Atari BASIC files can be editing in Altirra by starting the "Altirra.bat" script followed by `LOAD "H:C1.BAS"`to load the program.

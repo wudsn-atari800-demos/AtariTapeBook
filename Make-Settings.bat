@@ -1,10 +1,9 @@
 @echo off
-rem Adds the folders of the build tools to the PATH.
-rem This is the only file with machine-specific folders. Adapt it after installing the tools.
-rem Python is expected to be in the PATH already.
-set "MADS_DIR=C:\jac\system\Java\Programming\Repositories\wudsn-ide-tools\ASM\MADS\bin\windows_x86_64"
-set "JAVA_DIR=C:\jac\system\Java\Tools\JDK\21\64-bit\jdk-21\bin"
-set "TURGEN_DIR=C:\jac\system\Atari800\Tools\CAS\turgen-9.4.7"
-set "ALTIRRA_BRIDGE_DIR=C:\jac\system\Atari800\Tools\EMU\AltirraSDL"
-set "ALTIRRA_DIR=C:\jac\system\Atari800\Tools\EMU\Altirra"
-set "PATH=%MADS_DIR%;%JAVA_DIR%;%TURGEN_DIR%;%ALTIRRA_BRIDGE_DIR%;%ALTIRRA_DIR%;%PATH%"
+rem Adds the build tools in the "build" folder to the PATH. Make-Setup.bat downloads them.
+rem Python is expected to be installed globally.
+set "BUILD_DIR=%~dp0build"
+if not exist "%BUILD_DIR%\altirra\Altirra.exe" (
+  echo The build tools are missing. Run Make-Setup.bat first.
+  exit /b 1
+)
+set "PATH=%BUILD_DIR%\mads;%BUILD_DIR%\java\bin;%BUILD_DIR%\turgen;%BUILD_DIR%\altirra-bridge;%BUILD_DIR%\altirra;%PATH%"

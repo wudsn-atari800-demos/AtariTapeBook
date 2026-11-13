@@ -4,3 +4,4 @@
 *.wav
 __pycache__/
 /boot/Boot.sec
+/build/
