@@ -4,5 +4,10 @@ The Atari Tape Books is a software for Atari 8-bit computer with at least 16k of
 
 ## Tape Format
 The software is provide as a stereo tape in ".wav" format with 44.1kHz sample rate and 16-bit resolution.
-The left channel contains the audio-track, the right channel contain the data track.
+The left channel contains the audio-track, the right channel contain the data track with standard 600 baud data rate.
+The data track contains a short boot loader, to alloed booting with the "START" pressing during power-up.
+The bool loader is followed by a chain for Atari BASIC programs saved in "CSAVE" format with short inter-recording gaps (IRG).
+The short IRGs reducde the loading time.
 
+# Folder
+The chapters of the book are stored in the "chapters" folder.
