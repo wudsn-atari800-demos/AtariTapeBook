@@ -3,4 +3,4 @@
 *.atdbg
 *.wav
 __pycache__/
-/Boot.sec
+/boot/Boot.sec
