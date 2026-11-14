@@ -16,7 +16,7 @@ BOOT_LOAD_ADDRESS = $0600	; load address of the boot file (boot/Boot.asm)
 INTRO_FONT_ADDRESS = $0800	; the intro's 1K font, directly above the boot record and the intro's display code
 
 ; BASIC entry points in the boot file, called by the chapter programs with USR
-USR_LOADER = 1550		; X=USR(1550) loads and runs the next chapter
+USR_LOADER = 1550		; X=USR(1550[,ADR(T$),LEN(T$)]) loads and runs the next chapter, showing T$ or LOADING
 USR_SYNCER = 1554		; X=USR(1554) waits for the next cue of a run section
 
 ; Zero page, $CB-$D1 are free for the user

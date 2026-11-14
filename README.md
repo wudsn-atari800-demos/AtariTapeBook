@@ -27,6 +27,10 @@ The `.TXT` file of a run section contains cue points for the audio, exported fro
 For every cue point, the build writes a sync pulse on the data track, which the program can read from `SKSTAT` to keep the screen in step with the speech, see `test/Conversational-German/ANALYSIS.md`.
 A load section cannot have a `.TXT` file.
 
+A chapter program loads and runs the next load section with `X=USR(1550)`.
+While it loads, the intro shows `LOADING` below the cassette, or the text the program passes, for example `T$="LOADING CHAPTER 2":X=USR(1550,ADR(T$),LEN(T$))`.
+The text can contain uppercase letters, digits, spaces and `.-:`, up to 38 characters.
+
 
 ## Build Tools
 The build is started with `Makefile.bat` and requires the following tools.

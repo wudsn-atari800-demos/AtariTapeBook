@@ -36,9 +36,9 @@ load_address
 	nop
 	.endr
 
-basic_loader			; BASIC entry point
-	pla
-	jmp loader
+basic_loader			; BASIC entry point, X=USR(1550[,ADR(T$),LEN(T$)])
+	jmp loader_text
+	nop
 
 basic_syncer			; BASIC entry point
 	pla
@@ -130,6 +130,59 @@ loop	cmp RTCLOK+2
 	.proc reset		; protect the intro from BASIC, also after RESET
 	mwa #image_end MEMLO
 	rts
+	.endp
+
+; USR(1550[,ADR(T$),LEN(T$)]): load and run the next section. The intro shows
+; the passed text below the cassette while it loads, or LOADING without
+; arguments. Any other number of arguments is treated like none.
+	.proc loader_text
+ptr	= ZP_LOADER_PTR		; free after the pre-loader has finished
+
+	pla			; number of arguments
+	cmp #2
+	beq text
+	tax
+	beq default
+drop	pla			; drop the arguments
+	pla
+	dex
+	bne drop
+default	ldx #<intro.loading_text
+	ldy #>intro.loading_text
+	lda #intro.LOADING_LENGTH
+	jmp set
+
+text	pla			; address, high byte first
+	sta ptr+1
+	pla
+	sta ptr
+	pla			; length, high byte first
+	tax
+	pla
+	cpx #0
+	beq length_low
+	lda #255
+length_low
+	cmp #intro.TEXT_WIDTH+1
+	bcc length_ok
+	lda #intro.TEXT_WIDTH
+length_ok
+	sta length
+	tay			; copy the text, BASIC may change the string afterwards
+	beq copied
+copy	dey
+	lda (ptr),y
+	sta buffer,y
+	cpy #0
+	bne copy
+copied	ldx #<buffer
+	ldy #>buffer
+	lda length
+set	jsr intro.set_text
+	jmp loader
+
+length	.byte 0
+buffer	.ds intro.TEXT_WIDTH
 	.endp
 
 	.proc loader

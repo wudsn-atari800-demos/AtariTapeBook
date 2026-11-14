@@ -3,7 +3,29 @@
 Written 2026-11-14. Requested after plan 01, to use more of the OS font in
 the intro and to show which section is loading.
 
-**Status: planned.**
+**Status: executed 2026-11-14.** Implementation notes beyond the plan:
+
+- `gen.py` assigns the layout from the table below and stops if the
+  cassette needs more than the free codes; today it uses 52 of 56. The
+  generated `Intro-Data.asm` has `CAS_ANIMCHR_B` instead of `CAS_NCHARS`
+  and no ROM letter table any more.
+- The code `intro.show` needs (ROM copy, text output, `LOADING`) lies below
+  the font at $0800, which left no room for `intro.start`, `intro.off` and
+  `intro.set_text`; they moved behind the reel frames, because they run
+  only after everything is loaded.
+- `basic_loader` at 1550 now jumps to `loader_text`, which reads the
+  arguments, copies the text into its own buffer and calls
+  `intro.set_text`. `MEMLO` rises from $15CB to $163F.
+- The VBI also writes `CHACT` and `CHACTL` (2), so inverse characters show
+  as intended; `CHACTL` was added to the additions in `SystemEquates.asm`.
+- `chapters/C1.BAS` passes `LOADING CHAPTER 2`. Its listing reproduced
+  the previous file byte for byte before the change.
+
+Verification: `TestChapters.bat` passes and now also checks that the text
+while `C1.BAS` loads is `LOADING`. A probe of the real tape shows `LOADING`
+while the boot file and chapter 1 load, and `LOADING CHAPTER 2` while
+chapter 2 loads. The calls without arguments and with a wrong number of
+arguments are not covered by a test yet.
 
 ## Goal
 
