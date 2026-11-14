@@ -246,9 +246,10 @@ text_done
 	rts
 	.endp
 
-loading_text	.byte 'LOADING'
-LOADING_LENGTH = *-loading_text
-text_length	.byte LOADING_LENGTH
+	.local loading_text
+	.byte 'LOADING'
+	.endl
+text_length	.byte .len loading_text
 
 ; Variables, loaded with the code because "show" already uses them
 active		.byte 0		; VBI installed

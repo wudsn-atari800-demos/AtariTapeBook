@@ -121,40 +121,43 @@ black	sta COLOR0,x
 
 	mva #intro.CAS_LABEL_Y ROWCRS	; the title, inverse like on the cassette's label
 	mva #intro.CAS_LABEL_X COLCRS
-	ldx #0
-	ldy #intro.CAS_LABEL_LENGTH
-	jsr type
+	ldx #0			; the title, the first text
+	jsr type		; returns X at the next text, LOADING
 	mva #intro.TEXT_ROW ROWCRS	; LOADING, centered in the intro's text row
-	mva #[40-LOADING_LENGTH]/2 COLCRS
-	ldx #title_text_length
-	ldy #title_text_length+LOADING_LENGTH
+	mva #[40-[.len loading_text]]/2 COLCRS
 
-; Type the letters X to Y-1 of the texts at the cursor, one every TYPE_FRAMES.
+; Type the zero-terminated text at title_text+X at the cursor, one letter every
+; TYPE_FRAMES. Returns X behind the terminator, at the next text.
 ; The code above continues here for LOADING.
 	.proc type
-	sty end
-next_letter
 	txa
 	pha
-	lda texts,x
+	lda title_text,x
+	beq text_end
 	jsr put_char
 	lda #TYPE_FRAMES
 	jsr wait
 	pla
 	tax
 	inx
-	cpx end
-	bne next_letter
+	bne type
+text_end
+	pla
+	tax
+	inx
 	rts
 	.endp
 
-texts	dta c'ATARI TAPE BOOK'*		; ATASCII, inverse
-title_text_length = *-texts
-	dta c'LOADING'			; ATASCII
-LOADING_LENGTH = *-texts-title_text_length
+	.local title_text		; ATASCII, inverse
+	dta c'ATARI TAPE BOOK'*
+	.endl
+	.byte 0
+	.local loading_text		; ATASCII, follows the title for "type"
+	dta c'LOADING'
+	.endl
+	.byte 0
 
 colors	.ds 5			; COLOR0-COLOR4 before the fade
-end	.byte 0
 	.endp
 
 ; Second stage: load the intro records that follow the boot records.
@@ -286,7 +289,7 @@ drop	pla			; drop the arguments
 	bne drop
 default	ldx #<intro.loading_text
 	ldy #>intro.loading_text
-	lda #intro.LOADING_LENGTH
+	lda #.len intro.loading_text
 	jmp set
 
 text	pla			; address, high byte first
@@ -387,4 +390,4 @@ TOTAL_RECORDS = [image_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
 	ert basic_loader<>USR_LOADER	; BASIC programs call these addresses
 	ert basic_syncer<>USR_SYNCER
 	ert intro.font<>INTRO_FONT_ADDRESS	; else the font's alignment wastes memory
-	ert title.title_text_length<>intro.CAS_LABEL_LENGTH	; the typed title matches the label
+	ert [.len title.title_text]<>intro.CAS_LABEL_LENGTH	; the typed title matches the label
