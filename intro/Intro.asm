@@ -1,10 +1,10 @@
 ;
-;	@com.wudsn.ide.lng.outputfile=cassette.xex
+;	@com.wudsn.ide.lng.outputfile=Intro.xex
 ;
 ; THE ATARI TAPE BOOK - intro: animated cassette
 ; Atari 8-bit, ANTIC mode 2 (GRAPHICS 0), one 1K font for everything
 ; Build (MADS):  python3 gen.py
-;                mads cassette.asm -o:cassette.xex
+;                mads Intro.asm -o:Intro.xex
 ;
 ; Cassette 21x14 chars, label text in the Atari ROM font. Both reels share
 ; the same 16 animated chars; a deferred VBI copies the next 128-byte frame
@@ -29,7 +29,7 @@ DIR	= 1		; 1 = clockwise (play), -1 = counter-clockwise (rewind)
 
 	org $2000	; 1K aligned
 
-font	ins 'cassette.fnt'
+font	ins 'Intro.fnt'
 
 start	lda #1
 	sta CRSINH
@@ -131,7 +131,7 @@ vbi_exit
 	jmp XITVBV
 
 ; ---------------------------------------------------------------------------
-	icl 'cassette_data.s'
+	icl 'Intro-Data.asm'
 
 frlo
 	.rept CAS_NFRAMES

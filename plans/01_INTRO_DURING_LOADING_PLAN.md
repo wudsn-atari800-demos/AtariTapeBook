@@ -3,8 +3,8 @@
 Written 2026-11-14. Requested after the intro (`intro/`) was added and ported
 from ca65 to MADS.
 
-**Status: planned.** Done so far: the MADS port (`intro/cassette.asm`), which
-builds a `cassette.xex` byte-identical to the former ca65/ld65 build. Nothing
+**Status: planned.** Done so far: the MADS port (`intro/Intro.asm`), which
+builds a `Intro.xex` byte-identical to the former ca65/ld65 build. Nothing
 of the integration below is implemented yet.
 
 ## Current state
@@ -13,7 +13,7 @@ of the integration below is implemented yet.
   loaded as 2 records. Its routine at load address + 6 stops the motor and
   returns with `CLC`. The init routine `booter` clears `BOOT?` and `COLDST`,
   installs the E: hook that types `CLOAD` and `RUN`, and starts BASIC.
-- **Intro.** `intro/cassette.asm` is a standalone executable at $2000-$2C95:
+- **Intro.** `intro/Intro.asm` is a standalone executable at $2000-$2C95:
   a 1 KB font at $2000, code from $2400, then the 960-byte screen map, the
   ROM letter tables, 8 reel frames of 128 bytes each and two variables. It
   copies the screen map into BASIC's text screen (`SAVMSC`), sets `CHBAS` to
@@ -109,7 +109,7 @@ routine at load address + 6 can read more records itself with `RBLOKV`
 
 - **`boot/Boot.asm`**: pre-loader at load address + 6, `MEMLO` and `CASINI`
   handling in `booter`, the USR entry point to switch the intro off.
-- **`intro/cassette.asm`**: assembled from $0700 as a plain binary instead
+- **`intro/Intro.asm`**: assembled from $0700 as a plain binary instead
   of an executable, own display list, immediate VBI, chunked
   double-buffered reel characters, no endless loop, no copy into `SAVMSC`.
 - **`intro/gen.py`**: the second set of reel characters in the font; the
