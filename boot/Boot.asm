@@ -63,6 +63,19 @@ loop	cmp RTCLOK+2
 	.endp
 
 ; Fade the boot screen to black and type the title, see plan 03.
+; Put the character in A with the screen editor's PUT routine. Its address-1 is
+; in the editor's handler table in ROM; RTS jumps there, and its RTS returns to
+; the caller of put_char.
+	.proc put_char
+	tax
+	lda EDITRV+7
+	pha
+	lda EDITRV+6
+	pha
+	txa
+	rts
+	.endp
+
 	.proc title
 FADE_FRAMES = 2			; frames per fade step
 TYPE_FRAMES = 10		; frames per typed letter
@@ -117,7 +130,9 @@ black	sta COLOR0,x
 	ldy #title_text_length+LOADING_LENGTH
 
 ; Type the letters X to Y-1 of the texts at the cursor, one every TYPE_FRAMES.
-type	sty end
+; The code above continues here for LOADING.
+	.proc type
+	sty end
 next_letter
 	txa
 	pha
@@ -131,18 +146,7 @@ next_letter
 	cpx end
 	bne next_letter
 	rts
-
-; Put the character in A with the screen editor's PUT routine. Its address-1 is
-; in the editor's handler table in ROM; RTS jumps there, and its RTS returns to
-; the caller of put_char.
-put_char
-	tax
-	lda EDITRV+7
-	pha
-	lda EDITRV+6
-	pha
-	txa
-	rts
+	.endp
 
 texts	dta c'ATARI TAPE BOOK'*		; ATASCII, inverse
 title_text_length = *-texts
@@ -199,7 +203,7 @@ pass_color
 	dex
 	bpl pass_color
 	lda #$7D		; clear the now hidden OS screen with the typed texts,
-	jsr title.put_char	; so BASIC starts on an empty screen with the cursor at home
+	jsr put_char		; so BASIC starts on an empty screen with the cursor at home
 
 next_record
 	lda ptr
@@ -216,11 +220,12 @@ done	jsr RBLOKV		; read the end-of-file record, so CLOAD starts at the next file
 	clc			; boot continues; motor.stop keeps the carry
 	jmp motor.stop
 
-read_record			; carry set on error
+	.proc read_record		; carry set on error
 	jsr RBLOKV
 	tya
 	asl
 	rts
+	.endp
 
 shown	.byte 0
 	.endp

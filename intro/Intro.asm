@@ -99,8 +99,12 @@ dlist	.byte $70,$70,$70
 
 ; Display part: everything "show" and the VBI's display handling need.
 ; ---------------------------------------------------------------------------
-show	jsr copy_rom_chars
-on	jsr write_text
+	.proc show		; continues in "on"
+	jsr copy_rom_chars
+	.endp
+
+	.proc on
+	jsr write_text
 	lda active
 	bne on_done
 				; save the OS display, to restore it in "off"
@@ -117,11 +121,12 @@ save_color
 	jsr SETVBV
 	mva #1 active
 on_done	rts
+	.endp
 
 
 
 ; ---------------------------------------------------------------------------
-vbi
+	.proc vbi
 				; keep the intro on screen; remember a display list or font the OS set meanwhile
 	lda SDLSTL
 	cmp #<dlist
@@ -163,9 +168,10 @@ font_ok
 	jmp animate		; loaded after the reel frames
 vbi_exit
 	jmp SYSVBV
+	.endp
 
 ; Copy the standard characters (space is blank already) from the ROM font.
-copy_rom_chars
+	.proc copy_rom_chars
 	ldx #2
 copy_range
 	lda range_offset_lo,x
@@ -192,10 +198,11 @@ copy_char_byte
 range_offset_lo	.byte <[13*8],<[16*8],<[33*8]	; "-.", "0-9:", "A-Z"
 range_offset_hi	.byte >[13*8],>[16*8],>[33*8]
 range_length	.byte 2*8,11*8,26*8
+	.endp
 
 
 ; Write the text centered into its row.
-write_text
+	.proc write_text
 	ldx #39
 	lda #0			; blank
 clear_row
@@ -237,6 +244,7 @@ show_char
 	bne next_char
 text_done
 	rts
+	.endp
 
 loading_text	.byte 'LOADING'
 LOADING_LENGTH = *-loading_text
@@ -261,7 +269,7 @@ display_end			; everything "show" needs lies below
 
 ; ---------------------------------------------------------------------------
 ; Animation part of the VBI, needed only after the reel frames are loaded.
-animate
+	.proc animate
 	dec delay
 	bne anim_exit
 	mva #SPEED/2 delay
@@ -312,12 +320,16 @@ copy_chunk1
 	mva #1 complete
 anim_exit
 	jmp SYSVBV
+	.endp
 
 ; Entry points needed only after everything is loaded.
-start	mva #1 animating
+	.proc start
+	mva #1 animating
 	rts
+	.endp
 
-off	lda active
+	.proc off
+	lda active
 	beq off_done
 	lda #6
 	ldy #<SYSVBV
@@ -333,19 +345,21 @@ restore_color
 	mva #0 active
 off_done
 	rts
+	.endp
 
-set_text
-	stx text_source+1
-	sty text_source+2
+	.proc set_text
+	stx write_text.text_source+1
+	sty write_text.text_source+2
 	cmp #TEXT_WIDTH+1
 	bcc length_ok
 	lda #TEXT_WIDTH
 length_ok
 	sta text_length
 	rts
+	.endp
 
 ; Set src to frame X and dst to the hidden reel character set.
-set_pointers
+	.proc set_pointers
 	lda frlo,x
 	sta src
 	lda frhi,x
@@ -357,9 +371,10 @@ set_pointers
 hidden_a
 	mwa #font+SET_A*8 dst
 	rts
+	.endp
 
 ; Show the other reel character set in both reel blocks.
-switch_sets
+	.proc switch_sets
 	lda visible_set
 	eor #1
 	sta visible_set
@@ -385,6 +400,7 @@ reel_offsets			; offsets of the 16 reel chars from the top left of a block
 	.rept 16
 	.byte [#/4]*40+[#%4]
 	.endr
+	.endp
 
 
 text_line = cas_screen+TEXT_ROW*40
