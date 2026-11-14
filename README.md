@@ -47,10 +47,12 @@ The build is started with `Makefile.bat` and requires the following tools.
 | AltirraBridge | nightly | [AltirraSDL releases](https://github.com/ilmenit/AltirraSDL/releases/tag/nightly-bridge) | Headless Altirra that boots the new tape and checks the boot file. |
 | Altirra | 4.40 | [Altirra](https://www.virtualdub.org/altirra.html) | Plays the tape after the build and is used to edit the BASIC programs. |
 | A8CAS | 1.3.1 | [A8CAS](https://a8cas.sourceforge.net/) | Converts cassette recordings to `.cas` tape images, used by the scripts in the `test` folder. |
+| Microsoft David | Windows | Windows' English (United States) text-to-speech feature | The voice `Speak.py` speaks the narration with. |
 
 Python is installed globally, for example with the installer from python.org or with `winget install Python.Python.3.13`.
 All other tools are downloaded by `Make-Setup.bat` into the `build` folder, which is not part of the repository.
 Run it once before the first build. Tools that are already there are kept, so delete a tool's folder in `build` to get its latest version.
+It also checks for the narration's voice and, if it is missing, installs the English (United States) text-to-speech feature of Windows, which a Windows in another language lacks; Windows asks for administrator rights for that.
 `Make-Settings.bat` adds the folders in `build` to the `PATH`. `Makefile.bat` and `Altirra.bat` call it first.
 
 The downloaded Altirra starts with its built-in AltirraOS and Altirra BASIC.
