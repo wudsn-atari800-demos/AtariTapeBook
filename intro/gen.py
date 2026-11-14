@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """THE ATARI TAPE BOOK intro - cassette with label text, ANTIC mode 2.
 
-Cassette 21x14 chars (168x112 px), centred on a black 40x24 screen. The reels
+Cassette 21x14 chars (168x112 px), centered on a black 40x24 screen. The reels
 are 4x4-char blocks sharing the same 16 animated chars (8 frames, 128 bytes
 each). The label letters use the standard Atari font.
 
@@ -13,7 +13,7 @@ consecutive codes each) sit at 64 and 80, all other cassette characters take
 the remaining codes. The font file holds the label letters (from the table
 below) and reel set A; set B is filled at run time.
 
-Colours: white ink (COLOR1) on black paper (COLOR2), so the blank character 0
+Colors: white ink (COLOR1) on black paper (COLOR2), so the blank character 0
 fills the background. The white parts are set pixels; the white label and
 windows use the inverse space ($80), and the label letters are the inverse
 standard letters (black on white).
@@ -29,7 +29,7 @@ W, H = COLS * 8, ROWS * 8
 SS = 8
 NFRAMES = 8                       # frames per 60 deg (6 notches)
 REEL_ROW = 4                      # reel blocks: rows 4..7
-REEL_COLS = (4, 13)               # cols 4..7 and 13..16 -> centres x=48, x=120
+REEL_COLS = (4, 13)               # cols 4..7 and 13..16 -> centers x=48, x=120
 RB = 4                            # reel block size in chars
 RC = [(c * 8 + RB * 4, REEL_ROW * 8 + RB * 4) for c in REEL_COLS]
 REEL_R = 13.0
@@ -93,7 +93,7 @@ def render(angle):
     pill = ((x >= lx) & (x <= rx) & (np.abs(y - cy) <= PILL_R)) | \
            ((x - lx) ** 2 + (y - cy) ** 2 <= PILL_R ** 2) | ((x - rx) ** 2 + (y - cy) ** 2 <= PILL_R ** 2)
     ink |= pill
-    ink &= ~rrect(x, y, 72, 38, 96, 58, 2)                     # centre window
+    ink &= ~rrect(x, y, 72, 38, 96, 58, 2)                     # center window
     for (cx, cyy) in RC:
         ink &= ~reel(x, y, cx, cyy, angle)
     mid = W / 2

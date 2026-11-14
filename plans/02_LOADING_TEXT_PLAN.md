@@ -27,7 +27,7 @@ while the boot file and chapter 1 load, and `LOADING CHAPTER 2` while
 chapter 2 loads. The calls without arguments and with a wrong number of
 arguments are not covered by a test yet.
 
-**Review 2026-11-14:** the colours are swapped to white ink on black paper,
+**Review 2026-11-14:** the colors are swapped to white ink on black paper,
 so the blank character $00 fills the background instead of a solid black
 character. The white label and windows use the inverse blank ($80), the
 label letters the inverse standard letters, and the text is written in
@@ -96,7 +96,7 @@ character as base plus offset.
    ($E000) in three ranges (13-14, 16-26, 33-58), so the text can use them
    from the start. This replaces the label letter copy in `intro.start`.
 3. **Text output.** A routine writes a text into row 20 of the screen,
-   centred on the 40 columns, converting ATASCII to internal
+   centered on the 40 columns, converting ATASCII to internal
    codes. The cassette fills rows 5-18; row 19 stays blank as a gap of one
    character height, rows 21-23 stay blank too.
    `intro.show` and `intro.on` write the line once when the intro switches

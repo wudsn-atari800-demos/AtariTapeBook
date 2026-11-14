@@ -130,7 +130,7 @@ routine at load address + 6 can read more records itself with `RBLOKV`
 9. **Switching the intro on and off.** The E: hook in the boot code calls
    `intro.on` before it types `CLOAD` and `intro.off` when it starts typing
    `RUN`. `intro.off` removes the VBI and restores the display list, font
-   and colours that the VBI saved from the OS. The intro's memory stays
+   and colors that the VBI saved from the OS. The intro's memory stays
    reserved, because BASIC's program area cannot move down again.
 
 ## Impact

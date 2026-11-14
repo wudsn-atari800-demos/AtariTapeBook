@@ -21,7 +21,7 @@
 ; the OS font, the reel character sets at 64 and 80, the other cassette
 ; characters at the remaining codes.
 ;
-; Colours: white ink on black paper, so the blank character 0 fills the
+; Colors: white ink on black paper, so the blank character 0 fills the
 ; background. The white label and windows use the inverse blank ($80), the
 ; label letters are the inverse standard letters (black on white).
 ;
@@ -31,19 +31,19 @@
 ;             standing still. Needs everything up to display_end loaded.
 ;   start     Start the reel animation. Needs everything loaded.
 ;   on        Show the intro again after "off", with the current text.
-;   off       Restore the OS display list, font and colours.
+;   off       Restore the OS display list, font and colors.
 ;   set_text  Set the text below the cassette for the next "on": X/Y =
 ;             address (low/high) of an ATASCII text, A = its length. The text
 ;             is not copied; it must stay in place until "on". The initial
 ;             text is loading_text.
 ;
-; The text is shown in row 20, centred, white on black. Only
+; The text is shown in row 20, centered, white on black. Only
 ; space, "-.:", digits and uppercase letters are shown, any other character
 ; as a space; texts longer than TEXT_WIDTH are cut.
 ;
 ; The intro has its own display list and screen memory (the screen map), so
 ; BASIC's output during loading goes to BASIC's screen and does not show.
-; The immediate VBI keeps the intro's display list, font and colours in the
+; The immediate VBI keeps the intro's display list, font and colors in the
 ; shadow and hardware registers, because the OS copies the shadows only in
 ; the deferred VBI, which does not run during serial I/O, and BASIC's start
 ; reopens the screen.
@@ -177,7 +177,7 @@ range_offset_hi	.byte >[13*8],>[16*8],>[33*8]
 range_length	.byte 2*8,11*8,26*8
 
 
-; Write the text centred into its row.
+; Write the text centered into its row.
 write_text
 	ldx #39
 	lda #0			; blank
