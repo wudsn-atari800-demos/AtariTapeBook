@@ -29,6 +29,16 @@ notes beyond the plan:
 - `Intro-Demo.asm` places the intro first, so its font starts at $2000
   without a gap.
 
+**Review 2026-11-14:** the typing now works like a typewriter: each letter
+gets a key click (`CONSOL`) and a random delay of 2-9 frames
+(`TYPE_FRAMES` = 2 plus `RANDOM` & 7) instead of the fixed 10 frames.
+`print_text` walks through the zero-terminated texts with a self-modified
+pointer, so the call for `LOADING` needs no index. A frame-by-frame trace
+of `COLOR0`-`COLOR4` confirms the fade: the luminances drop by 2 every
+2 frames, and a register becomes $00 as soon as its luminance reaches 0,
+so no dark hue remains (e.g. `COLOR2` $94, $92, $00); then `COLOR1` gets
+the intro's ink.
+
 Verification: `TestChapters.bat` passes and also checks that both texts
 appear on the OS screen before the intro and that `COLOR0`-`COLOR4` are the
 OS colors again when `C1.BAS` runs. Screenshots show the title being typed
@@ -67,8 +77,8 @@ The tape motor is stopped during that time.
    instead of the faded ones; `intro.on`/`intro.off` save and restore all
    five registers.
 3. **Fade.** It decreases the luminance (low nibble) of `COLOR0`-`COLOR4`
-   by 2 per step, one step every 2 frames, until all are 0, then sets all
-   five to 0 (black). The OS's deferred VBI copies the shadow registers to
+   by 2 per step, one step every 2 frames. A register whose luminance
+   reaches 0 becomes $00 (black), because luminance 0 still shows the hue. The OS's deferred VBI copies the shadow registers to
    the hardware, because no serial I/O runs at that time. From a
    luminance of 14, this takes 7 steps, about 0.3 s.
 4. **Prepare the screen.** It clears the OS screen memory (`SAVMSC`, 960

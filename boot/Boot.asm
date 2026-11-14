@@ -78,7 +78,7 @@ loop	cmp RTCLOK+2
 
 	.proc title
 FADE_FRAMES = 2			; frames per fade step
-TYPE_FRAMES = 10		; frames per typed letter
+TYPE_FRAMES = 2			; frames per typed letter
 
 	ldx #4			; keep the OS colors, the intro restores them in "off"
 save_color
@@ -86,19 +86,19 @@ save_color
 	dex
 	bpl save_color
 
-fade	ldy #0			; number of colors not yet at luminance 0
+fade	ldy #0			; number of colors not yet black
 	ldx #4
 fade_color
 	lda COLOR0,x
-	and #$0F
-	beq next_color		; luminance 0 already
+	beq next_color		; black already
 	iny
-	cmp #2
-	lda COLOR0,x
+	and #$0F
+	cmp #3
 	bcs darker
-	and #$F0		; luminance 1 becomes 0
-	bcc store_color
-darker	sbc #2
+	lda #0			; luminance 0 (also after 1 or 2): black, not the dark hue
+	beq store_color
+darker	lda COLOR0,x		; luminance down by 2, carry is set
+	sbc #2
 store_color
 	sta COLOR0,x
 next_color
@@ -108,12 +108,6 @@ next_color
 	jsr wait
 	tya
 	bne fade
-
-	ldx #4			; black
-	lda #0
-black	sta COLOR0,x
-	dex
-	bpl black
 	mva #1 CRSINH		; no cursor
 	lda #$7D		; clear the screen
 	jsr put_char
@@ -121,30 +115,29 @@ black	sta COLOR0,x
 
 	mva #intro.CAS_LABEL_Y ROWCRS	; the title, inverse like on the cassette's label
 	mva #intro.CAS_LABEL_X COLCRS
-	ldx #0			; the title, the first text
-	jsr type		; returns X at the next text, LOADING
+	jsr print_text		; leaves text_ptr at the title's terminator, before LOADING
 	mva #intro.TEXT_ROW ROWCRS	; LOADING, centered in the intro's text row
 	mva #[40-[.len loading_text]]/2 COLCRS
 
-; Type the zero-terminated text at title_text+X at the cursor, one letter every
-; TYPE_FRAMES. Returns X behind the terminator, at the next text.
+; Print the next zero-terminated text at the cursor, like a typewriter: a key
+; click and TYPE_FRAMES to TYPE_FRAMES+7 frames per letter. text_ptr walks
+; through the texts, so each call prints the text after the previous one.
 ; The code above continues here for LOADING.
-	.proc type
-	txa
-	pha
-	lda title_text,x
+	.proc print_text
+next_char
+	inw text_ptr
+text_ptr = *+1
+	lda title_text-1
 	beq text_end
 	jsr put_char
-	lda #TYPE_FRAMES
+	lda #0
+	sta CONSOL		; Click
+	lda RANDOM
+	and #7
+	add #TYPE_FRAMES
 	jsr wait
-	pla
-	tax
-	inx
-	bne type
+	jmp next_char		; wait returns with Z set
 text_end
-	pla
-	tax
-	inx
 	rts
 	.endp
 
