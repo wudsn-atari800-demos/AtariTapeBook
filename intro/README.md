@@ -29,6 +29,7 @@ It is shown while the tape loads, see `plans/01_INTRO_DURING_LOADING_PLAN.md`.
 | `Intro-Data.asm` | 40x24 screen map, reel frames, ROM letter table, constants (included by `Intro.asm`) |
 | `Intro.fnt`      | 1 KB font (frame 0, letters as in the ROM)            |
 | `Intro-Demo.asm` | standalone demo                                       |
+| `Intro-Demo.bat` | builds the standalone demo and starts it in Altirra   |
 | `Intro.xex`      | runnable standalone demo                              |
 | `gen.py`         | generator for the data, font and preview              |
 | `preview.gif`    | preview of the animation                              |

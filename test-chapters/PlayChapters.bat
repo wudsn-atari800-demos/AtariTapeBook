@@ -7,4 +7,4 @@ cd /d "%~dp0"
 call ..\Make-Settings.bat || exit /b 1
 if not exist TestChapters.wav python TestChapters.py
 if not exist TestChapters.wav exit /b 1
-start "Atari Tape Book Test" Altirra.exe /tempprofile /basic /casautoboot /nosiopatch /tape TestChapters.wav
+start "Atari Tape Book Test" Altirra.exe /nosi /tempprofile /basic /casautoboot /nosiopatch /tape TestChapters.wav

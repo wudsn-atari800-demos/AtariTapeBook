@@ -5,4 +5,4 @@ rem The settings of this Altirra session are not saved.
 setlocal
 cd /d "%~dp0"
 call Make-Settings.bat || exit /b 1
-start "Atari Tape Book" Altirra.exe /tempprofile /basic /nocasautoboot /nosiopatch /hdpathrw "%CD%\chapters"
+start "Atari Tape Book" Altirra.exe /nosi /tempprofile /basic /nocasautoboot /nosiopatch /hdpathrw "%CD%\chapters"
