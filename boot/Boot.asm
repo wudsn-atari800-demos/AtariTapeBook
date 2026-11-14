@@ -175,6 +175,7 @@ next_color
 	mva #intro.CAS_LABEL_Y ROWCRS	; the title, inverse like on the cassette's label
 	mva #intro.CAS_LABEL_X COLCRS
 	jsr print_text		; leaves text_ptr at the title's terminator, before LOADING
+	mva #$00 SOUNDR		; no data noise when the loading continues
 	mva #intro.TEXT_ROW ROWCRS	; LOADING, centered in the intro's text row
 	mva #[40-[.len loading_text]]/2 COLCRS
 
@@ -232,7 +233,6 @@ PAUSE_ADDRESS = load_address+PAUSE_RECORD*RECORD_SIZE
 ; Called when the intro's display is loaded.
 	.proc show_intro
 	jsr intro.show
-	mva #$00 SOUNDR		; $00 no sound
 
 	ldx #4			; "off" restores the colors from before the fade
 pass_color
