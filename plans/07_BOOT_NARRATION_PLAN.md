@@ -95,3 +95,11 @@ Made 2026-11-14:
   if the narration does not fit.
 - `test-chapters/TestChapters.bat` passes, and so does the boot test of the
   real tape build.
+- Fix after a test on a German Windows (2026-11-14): there, the narration
+  came out in a German female voice and 0.6 s too long. The synthesizer
+  switches to a voice of the prompt's language, which defaults to the
+  language of Windows, whatever voice was selected, and still reports the
+  selected one. `Speak.py` now pins voice (Microsoft David), language
+  (en-US, also in the prompt) and rate (0), and stops if the voice is not
+  installed. Tested with a German UI language: the .wav is identical to
+  the one on an English Windows.
