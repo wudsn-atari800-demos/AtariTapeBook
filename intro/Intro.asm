@@ -54,7 +54,8 @@
 ; could make the record fail. The VBI therefore copies each frame in two
 ; chunks into a second set of reel characters (codes 80-95) while the first
 ; set (codes 64-79) is shown, and then switches the 32 reel positions in the
-; screen map to the other set.
+; screen map to the other set. The reels follow the motor: they speed up when
+; it starts and slow down when it stops (plans/06_REEL_INERTIA_PLAN.md).
 
 	.local intro
 
@@ -64,7 +65,8 @@
 src	= ZP_INTRO_SRC	; used by show and the VBI
 dst	= ZP_INTRO_DST
 
-SPEED	= 2		; VBIs per animation step, even (lower = faster)
+SPEED	= 2		; VBIs per animation step at full speed, even (lower = faster)
+RAMP_VBIS = 50		; VBIs from standstill to full speed and back, 1 s at 50 Hz
 DIR	= 1		; 1 = clockwise (play), -1 = counter-clockwise (rewind)
 
 INK	= $0E		; white ink ...
@@ -254,7 +256,6 @@ text_length	.byte .len loading_text
 ; Variables, loaded with the code because "show" already uses them
 active		.byte 0		; VBI installed
 animating	.byte 0		; reel frames and animation code loaded
-delay		.byte 1
 phase		.byte 0		; 0 = first chunk of a step, 1 = second chunk
 complete	.byte 0		; the hidden set holds a complete frame
 frame		.byte 0		; frame shown or being copied
@@ -270,10 +271,34 @@ display_end			; everything "show" needs lies below
 
 ; ---------------------------------------------------------------------------
 ; Animation part of the VBI, needed only after the reel frames are loaded.
+; The reels follow the motor: while it runs, "rate" goes up by 1 per VBI up to
+; MAX_RATE, while it is off down to 0. Every VBI adds "rate" to "sum"; each
+; time "sum" reaches THRESHOLD, the next chunk is copied. At MAX_RATE that is
+; one chunk every SPEED/2 VBIs, full speed.
 	.proc animate
-	dec delay
-	bne anim_exit
-	mva #SPEED/2 delay
+MAX_RATE = RAMP_VBIS
+THRESHOLD = MAX_RATE*SPEED/2
+
+	lda PACTL
+	and #MOTOR_OFF_MASK
+	bne motor_off
+	lda rate		; motor on: speed up
+	cmp #MAX_RATE
+	bcs add_rate
+	inc rate
+	bcc add_rate		; always, inc keeps the carry
+motor_off
+	lda rate		; motor off: slow down
+	beq anim_exit
+	dec rate
+add_rate
+	lda sum
+	clc
+	adc rate
+	cmp #THRESHOLD
+	bcc keep_sum
+	sbc #THRESHOLD		; carry is set
+	sta sum
 	lda phase
 	bne second_chunk
 
@@ -321,6 +346,12 @@ copy_chunk1
 	mva #1 complete
 anim_exit
 	jmp SYSVBV
+keep_sum
+	sta sum
+	jmp SYSVBV
+
+rate	.byte 0		; 0 = standstill, MAX_RATE = full speed
+sum	.byte 0
 	.endp
 
 ; Entry points needed only after everything is loaded.
@@ -343,7 +374,9 @@ restore_color
 	mva os_colors,x COLOR0,x
 	dex
 	bpl restore_color
-	mva #0 active
+	lda #0
+	sta active
+	sta animate.rate	; "on" starts with the reels standing still
 off_done
 	rts
 	.endp
@@ -420,6 +453,7 @@ frhi
 end				; first free byte after the intro
 
 	ert CAS_ANIMLEN<>CAS_FRAMESIZE	; the VBI copies whole frames
+	ert animate.THRESHOLD+animate.MAX_RATE>256	; sum+rate must fit into a byte
 	ert SET_B+16>128		; set B must fit into the font
 	ert (cas_screen&$F000)<>((cas_screen+959)&$F000)	; screen memory must not cross 4K
 	ert (dlist&$FC00)<>((dlist+31)&$FC00)			; display list must not cross 1K

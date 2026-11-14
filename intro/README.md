@@ -24,7 +24,13 @@ loads, with a text such as "LOADING" below the cassette, see
   I/O. To keep the VBI short, it copies each 128-byte frame in two chunks into
   a second set of reel characters (codes 80-95) and then switches the reel
   positions in the screen map to that set. `SPEED` (even) sets the VBIs per
-  step, `DIR = -1` reverses (rewind). Settings at the top of `Intro.asm`.
+  step at full speed, `DIR = -1` reverses (rewind). Settings at the top of
+  `Intro.asm`.
+* The reels follow the cassette motor (bit 3 of `PACTL`): when it starts,
+  they speed up to full speed, when it stops, they slow down to standstill,
+  each in `RAMP_VBIS` VBIs (50, 1 s), see `plans/06_REEL_INERTIA_PLAN.md`.
+  `intro.off` stops them, so `intro.on` starts with the reels standing
+  still. The demo switches the motor on for 4 s and off for 2 s.
 * Own display list and screen memory (the screen map), so BASIC's output during
   loading does not show. The VBI keeps the display list, font and colors in
   place, and `intro.off` restores those of the OS, including `COLOR0`-`COLOR4`.

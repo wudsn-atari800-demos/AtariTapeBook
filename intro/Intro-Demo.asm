@@ -13,8 +13,29 @@
 
 	icl 'Intro.asm'
 
-start	jsr intro.show
+; The reels follow the motor, so the demo switches it: on for 4 s, off for 2 s.
+	.proc start
+ON_FRAMES = 200
+OFF_FRAMES = 100
+
+	jsr intro.show
 	jsr intro.start
-	jmp *
+loop	mva #START_MOTOR PACTL
+	lda #ON_FRAMES
+	jsr wait
+	mva #STOP_MOTOR PACTL
+	lda #OFF_FRAMES
+	jsr wait
+	jmp loop
+
+	.proc wait		; wait A frames
+	clc
+	adc RTCLOK+2
+wait_frame
+	cmp RTCLOK+2
+	bne wait_frame
+	rts
+	.endp
+	.endp
 
 	run start

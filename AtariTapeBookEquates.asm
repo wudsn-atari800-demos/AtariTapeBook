@@ -11,6 +11,7 @@ RECORD_SIZE = 128		; data bytes of a cassette record, also the unit of the boot 
 HATAB_SIZE = 16			; size of a handler vector table, e.g. EDITRV
 START_MOTOR = $34		; PACTL value, cassette motor on
 STOP_MOTOR = $3C		; PACTL value, cassette motor off
+MOTOR_OFF_MASK = START_MOTOR^STOP_MOTOR	; PACTL bit 3, set while the motor is off
 
 ; Memory map, see plans/01_INTRO_DURING_LOADING_PLAN.md
 BOOT_LOAD_ADDRESS = $0600	; load address of the boot file (boot/Boot.asm)
