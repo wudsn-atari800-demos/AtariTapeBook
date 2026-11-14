@@ -1,23 +1,29 @@
 ;
 ;	@com.wudsn.ide.lng.outputfile=Boot.sec
 ;
-; Boot file of the Atari Tape Book, see plans/01_INTRO_DURING_LOADING_PLAN.md.
+; Boot file of the Atari Tape Book, see plans/01_INTRO_DURING_LOADING_PLAN.md
+; and plans/04_SMALLER_BOOT_PLAN.md.
 ;
 ; The file is a two-stage boot file. Its header announces only the boot
-; records (BOOT_RECORDS). The OS loads them and calls load address + 6,
-; while the cassette is still open and the motor runs. There, the pre-loader
-; stops the motor, fades the boot screen to black and types the title, see
-; plans/03_BOOT_FADE_AND_TEXT_PLAN.md. Then it restarts the motor, reads the
-; records of the intro (intro/Intro.asm), which follow directly on the tape,
-; shows the intro as soon as its display is loaded and starts the animation
-; when everything is loaded.
+; record (BOOT_RECORDS). The OS loads it and calls the pre-loader at load
+; address + 6, while the cassette is still open and the motor runs. The
+; pre-loader reads the following records itself: first the second stage with
+; the title code, then the intro (intro/Intro.asm). As soon as the title code
+; is loaded (PAUSE_ADDRESS), it pauses: it stops the motor, fades the boot
+; screen to black, types the title (plans/03_BOOT_FADE_AND_TEXT_PLAN.md) and
+; restarts the motor. It shows the intro as soon as its display is loaded and
+; starts the animation when everything is loaded.
 ;
-; Memory, in this order: the boot records from $0600 (header, BASIC entry
-; points, motor control, pre-loader with fade and title), code that runs
-; only after everything is loaded, as much as fits below $0800, the intro
-; with its font at $0800, and the rest of that code. "booter" raises MEMLO
-; above it all, so BASIC's program area starts above it.
-
+; Memory, in this order: the boot record from $0600 (header, pre-loader), the
+; second stage up to $0800 (the code the pause needs first, then the code that
+; runs after loading, and the BASIC entry points at the end), the intro with
+; its font at $0800, and the rest of the code that runs after loading. "booter"
+; raises MEMLO above it all, so BASIC's program area starts above it.
+;
+; The first header byte, which the OS ignores for cassette boot, holds the
+; record after which the pre-loader pauses (PAUSE_RECORD). Bin2Wav.py extends
+; the gap after that record, so the restarted motor reaches its speed before
+; the next record.
 
 	icl '../AtariTapeBookEquates.asm'
 
@@ -27,24 +33,76 @@
 
 load_address
 
-	.byte $00		; unused
+	.byte PAUSE_RECORD	; ignored by the OS, read by Bin2Wav.py
 	.byte BOOT_RECORDS	; records the OS loads
 	.word load_address
 	.word booter
 
-	jmp preloader		; called by the OS after the boot records
+; First stage, called by the OS at load address + 6 after the boot record:
+; read the records that follow.
+	.proc preloader
+ptr	= ZP_LOADER_PTR
+LAST_BOOT_RECORD = load_address+[BOOT_RECORDS-1]*RECORD_SIZE
 
-	.rept 5			; keep the BASIC entry points at USR_LOADER and USR_SYNCER
-	nop
-	.endr
+	ldx #RECORD_SIZE-1	; AltirraOS reads one record more than announced; if the
+compare				; original OS does not, the buffer still holds the last boot record
+	lda CASBUF_DATA,x
+	cmp LAST_BOOT_RECORD,x
+	bne have_record
+	dex
+	bpl compare
+	jsr read_record
+	bcs fail
+have_record
+	mwa #load_address+BOOT_RECORDS*RECORD_SIZE ptr
+copy_record
+	ldy #RECORD_SIZE-1
+copy	lda CASBUF_DATA,y
+	sta (ptr),y
+	dey
+	bpl copy
+	adw ptr #RECORD_SIZE
 
-basic_loader			; BASIC entry point, X=USR(1550[,ADR(T$),LEN(T$)])
-	jmp loader_text
-	nop
+	lda ptr+1		; pause when the title code is loaded
+	ldx ptr
+	cpx #<PAUSE_ADDRESS
+	bne no_pause
+	cmp #>PAUSE_ADDRESS
+	bne no_pause
+	jsr pause
+	jmp next_record
+no_pause
+	cpx #<SHOW_ADDRESS	; show the intro when its display is loaded
+	bne next_record
+	cmp #>SHOW_ADDRESS
+	bne next_record
+	jsr show_intro
 
-basic_syncer			; BASIC entry point
-	pla
-	jmp syncer
+next_record
+	lda ptr
+	cmp #<[load_address+TOTAL_RECORDS*RECORD_SIZE]
+	lda ptr+1
+	sbc #>[load_address+TOTAL_RECORDS*RECORD_SIZE]
+	bcc read_next
+	jmp finish		; all records are loaded
+read_next
+	jsr read_record
+	bcc copy_record
+fail	rts			; carry set: the OS shows BOOT ERROR
+
+	.proc read_record		; carry set on error
+	jsr RBLOKV
+	tya
+	asl
+	rts
+	.endp
+	.endp
+
+boot_end
+BOOT_RECORDS = [boot_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
+
+; Second stage, read by the pre-loader. The code the pause needs comes first,
+; so the pause, and with it the title, comes as early as possible.
 
 	.proc motor
 start	lda #START_MOTOR	; Start tape
@@ -62,7 +120,6 @@ loop	cmp RTCLOK+2
 	rts
 	.endp
 
-; Fade the boot screen to black and type the title, see plan 03.
 ; Put the character in A with the screen editor's PUT routine. Its address-1 is
 ; in the editor's handler table in ROM; RTS jumps there, and its RTS returns to
 ; the caller of put_char.
@@ -76,6 +133,7 @@ loop	cmp RTCLOK+2
 	rts
 	.endp
 
+; Fade the boot screen to black and type the title, see plan 03.
 	.proc title
 FADE_FRAMES = 2			; frames per fade step
 TYPE_FRAMES = 2			; frames per typed letter
@@ -153,45 +211,25 @@ text_end
 colors	.ds 5			; COLOR0-COLOR4 before the fade
 	.endp
 
-; Second stage: load the intro records that follow the boot records.
-	.proc preloader
-ptr	= ZP_LOADER_PTR
-LAST_BOOT_RECORD = load_address+[BOOT_RECORDS-1]*RECORD_SIZE
+; Stop the motor, fade the screen, type the title, restart the motor.
+	.proc pause
 MOTOR_START_FRAMES = 25		; about 0.5 s for the motor to reach its speed
 
 	jsr motor.stop		; the tape must not run on while the title is typed
 	jsr title
 	jsr motor.start
 	lda #MOTOR_START_FRAMES
-	jsr wait
+	jmp wait
+	.endp
 
-	ldx #RECORD_SIZE-1	; AltirraOS reads one record more than announced; if the
-compare				; original OS does not, the buffer still holds the last boot record
-	lda CASBUF_DATA,x
-	cmp LAST_BOOT_RECORD,x
-	bne have_record
-	dex
-	bpl compare
-	jsr read_record
-	bcs fail
-have_record
-	mwa #load_address+BOOT_RECORDS*RECORD_SIZE ptr
-copy_record
-	ldy #RECORD_SIZE-1
-copy	lda CASBUF_DATA,y
-	sta (ptr),y
-	dey
-	bpl copy
-	adw ptr #RECORD_SIZE
+pause_end
+PAUSE_RECORD = [pause_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
+PAUSE_ADDRESS = load_address+PAUSE_RECORD*RECORD_SIZE
 
-	lda shown		; show the intro as soon as its display is loaded
-	bne next_record
-	lda ptr
-	cmp #<intro.display_end
-	lda ptr+1
-	sbc #>intro.display_end
-	bcc next_record
-	inc shown
+; Code that runs only after the pause or after loading.
+
+; Called when the intro's display is loaded.
+	.proc show_intro
 	jsr intro.show
 	mva #$00 SOUNDR		; $00 no sound
 
@@ -201,38 +239,19 @@ pass_color
 	dex
 	bpl pass_color
 	lda #$7D		; clear the now hidden OS screen with the typed texts,
-	jsr put_char		; so BASIC starts on an empty screen with the cursor at home
+	jmp put_char		; so BASIC starts on an empty screen with the cursor at home
+	.endp
 
-next_record
-	lda ptr
-	cmp #<[load_address+TOTAL_RECORDS*RECORD_SIZE]
-	lda ptr+1
-	sbc #>[load_address+TOTAL_RECORDS*RECORD_SIZE]
-	bcs done
-	jsr read_record
-	bcc copy_record
-fail	rts			; carry set: the OS shows BOOT ERROR
+SHOW_ADDRESS = load_address+[[intro.display_end-load_address+RECORD_SIZE-1]/RECORD_SIZE]*RECORD_SIZE
 
-done	jsr RBLOKV		; read the end-of-file record, so CLOAD starts at the next file
+; Called when all records are loaded; returns to the OS.
+	.proc finish
+	jsr RBLOKV		; read the end-of-file record, so CLOAD starts at the next file
 	jsr intro.start
 	clc			; boot continues; motor.stop keeps the carry
 	jmp motor.stop
-
-	.proc read_record		; carry set on error
-	jsr RBLOKV
-	tya
-	asl
-	rts
 	.endp
 
-shown	.byte 0
-	.endp
-
-boot_end
-BOOT_RECORDS = [boot_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
-
-; Code that runs only after the pre-loader has loaded the whole file: as much
-; as fits in front of the intro's font at $0800, the rest behind the intro.
 	.proc booter
 	mva #2 BOOT?		; cassette boot done: the OS calls CASINI on RESET
 	mva #$00 COLDST
@@ -248,6 +267,7 @@ BOOT_RECORDS = [boot_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
 	.endp
 
 	.proc syncer
+	pla			; number of arguments, none
 	jsr motor.start
 	lda #50			; Wait 1 s
 	jsr wait
@@ -261,13 +281,20 @@ wait_sio_0			; Wait until SIO=0 again
 	jmp motor.stop
 	.endp
 
+; BASIC entry points at fixed addresses directly below the intro's font, so
+; they stay in place when code moves.
+	ert *>USR_LOADER
+	org USR_LOADER
+basic_loader			; X=USR(2042[,ADR(T$),LEN(T$)])
+	jmp loader_text
+basic_syncer			; X=USR(2045)
+	jmp syncer
+
 	icl '../intro/Intro.asm'
 
 ; The rest of the code that runs only after everything is loaded.
 
-
-
-; USR(1550[,ADR(T$),LEN(T$)]): load and run the next section. The intro shows
+; USR(2042[,ADR(T$),LEN(T$)]): load and run the next section. The intro shows
 ; the passed text below the cassette while it loads, or LOADING without
 ; arguments. Any other number of arguments is treated like none.
 	.proc loader_text
@@ -386,3 +413,5 @@ TOTAL_RECORDS = [image_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
 	ert basic_syncer<>USR_SYNCER
 	ert intro.font<>INTRO_FONT_ADDRESS	; else the font's alignment wastes memory
 	ert [.len title.title_text]<>intro.CAS_LABEL_LENGTH	; the typed title matches the label
+	ert PAUSE_RECORD<=BOOT_RECORDS	; the pre-loader reads the title code itself
+	ert SHOW_ADDRESS<=PAUSE_ADDRESS

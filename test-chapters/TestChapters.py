@@ -7,11 +7,11 @@ the same time, and waits for the section's cue through basic_syncer:
 
     10 PRINT "SYNC TEST"
     20 PRINT "This is the first section of the test."
-    30 X=USR(1554):PRINT "CUE 1"
+    30 X=USR(2045):PRINT "CUE 1"
     40 PRINT "This is section two, which ends with the second cue."
-    50 X=USR(1554):PRINT "CUE 2"
+    50 X=USR(2045):PRINT "CUE 2"
     60 PRINT "This is section three, which ends with the third cue."
-    70 X=USR(1554):PRINT "CUE 3"
+    70 X=USR(2045):PRINT "CUE 3"
     80 PRINT "DONE"
 
 C1A.TXT holds three cues at 3.0, 7.5 and 12.0 s, with the section texts as
@@ -24,7 +24,7 @@ with --write-audio, for example after changing the cues, using the Windows
 speech synthesizer.
 
 The test
-1. assembles the boot code and checks that basic_syncer is still at 1554,
+1. assembles the boot code and checks that basic_syncer is still at 2045,
    the address C1.BAS calls,
 2. builds the tape with Bin2Wav.py, which also runs its boot check,
 3. plays the tape in the headless AltirraBridgeServer at real tape speed
@@ -60,7 +60,7 @@ PROJECT_DIR = os.path.dirname(TEST_DIR)
 sys.path.insert(0, PROJECT_DIR)
 import Bin2Wav  # noqa: E402
 
-SYNCER_ADDRESS = 1554          # the address C1.BAS calls with USR
+SYNCER_ADDRESS = 2045          # the address C1.BAS calls with USR
 CUES = 3
 AUDIO_SECONDS = 15.0
 SPACING_TOLERANCE_S = 0.3

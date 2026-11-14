@@ -3,7 +3,7 @@
 Written 2026-11-14. Requested after plan 03, which grew the records the OS
 loads from 2 to 3.
 
-**Status: proposed.**
+**Status: done 2026-11-14 (option B).**
 
 ## Current state
 
@@ -113,3 +113,28 @@ Option B also includes points 1, 2 and 4 of option A.
 - Option A or B.
 - The address of the jump table: below the font (USR 2042/2045, proposed)
   or another fixed address.
+
+## Result
+
+Option B, with the jump table below the font (USR 2042 and 2045).
+
+| Part | Addresses | Bytes |
+|---|---|---|
+| Boot record: header, `preloader` with `read_record` | $0600-$066A | 107 |
+| Pause code: `motor`, `wait`, `put_char`, `title`, `pause` | $066B-$0729 | 191 |
+| `show_intro`, `finish`, `booter`, `reset`, `syncer` | $072A-$0787 | 94 |
+| Free | $0788-$07F9 | 114 |
+| Jump table `basic_loader`, `basic_syncer` | $07FA-$07FF | 6 |
+
+- The OS loads **1 record** instead of 3. The pre-loader reads records 2
+  and 3 (`PAUSE_RECORD` = 3, in header byte 0) and then pauses for the
+  title; AltirraOS's extra read is still handled.
+- `Bin2Wav.py` reads the pause record from header byte 0 and extends only
+  the gap after it; the boot section is 2 s shorter.
+- `motor` stays out of the boot record: only the pause uses it.
+- Tested with `test-chapters/TestChapters.bat` (PASS: title typed, intro
+  with `LOADING`, colors restored, cues in order) and the boot test of the
+  real tape build.
+- Still open: a run with the original Atari OS to confirm that a non-zero
+  header byte 0 does not change the cassette boot (the OS copies it to
+  `DFLAGS` and does not use it otherwise).

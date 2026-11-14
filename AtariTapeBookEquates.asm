@@ -14,11 +14,12 @@ STOP_MOTOR = $3C		; PACTL value, cassette motor off
 
 ; Memory map, see plans/01_INTRO_DURING_LOADING_PLAN.md
 BOOT_LOAD_ADDRESS = $0600	; load address of the boot file (boot/Boot.asm)
-INTRO_FONT_ADDRESS = $0800	; the intro's 1K font, directly above the boot record and the intro's display code
+INTRO_FONT_ADDRESS = $0800	; the intro's 1K font, directly above the boot code and the BASIC jump table
 
-; BASIC entry points in the boot file, called by the chapter programs with USR
-USR_LOADER = 1550		; X=USR(1550[,ADR(T$),LEN(T$)]) loads and runs the next chapter, showing T$ or LOADING
-USR_SYNCER = 1554		; X=USR(1554) waits for the next cue of a run section
+; BASIC entry points in the boot file, called by the chapter programs with USR,
+; a jump table directly below the intro's font
+USR_LOADER = INTRO_FONT_ADDRESS-6	; 2042: X=USR(2042[,ADR(T$),LEN(T$)]) loads and runs the next chapter, showing T$ or LOADING
+USR_SYNCER = INTRO_FONT_ADDRESS-3	; 2045: X=USR(2045) waits for the next cue of a run section
 
 ; Zero page, $CB-$D1 are free for the user
 ZP_INTRO_SRC = $CB		; 2 bytes, copy source of the intro

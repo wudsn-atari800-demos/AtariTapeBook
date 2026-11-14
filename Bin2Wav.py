@@ -40,9 +40,10 @@ without extension, and the files with that base name decide its type:
 - A load section must not have a .TXT file; cues belong to run sections.
 
 If the boot file holds more records than its header announces (a two-stage
-boot file, see boot/Boot.asm), the gaps after the announced records and after
-the next record are extended by BOOT_GAP_S of mark tone, because the
-pre-loader stops the motor there and restarts it before it reads on.
+boot file, see boot/Boot.asm), the first header byte, which the OS ignores for
+cassette boot, holds the record after which the pre-loader stops the motor and
+restarts it before it reads on.  The gap after that record is extended by
+BOOT_GAP_S of mark tone.
 
 The Atari plays the left channel through the TV speaker while the tape motor
 runs.  The program must keep the motor running (POKE 54018,52) until the
@@ -518,12 +519,15 @@ def main():
                 gencas(args.turgen, ["-mode:plain", *(["-a"] if i else ["-r"]), *gaps, program, cas])
                 extended = ""
                 announced = boot[1] if len(boot) >= 6 else 0
+                pause = boot[0] if len(boot) >= 6 else 0
                 if i == 0 and 0 < announced and len(boot) > announced * RECORD_SIZE:
-                    # Two-stage boot file: the pre-loader stops the motor before it reads the
-                    # next record. Which record that is depends on whether the OS read one
-                    # record more than announced, so both gaps are extended.
-                    extend_gaps(part, [announced, announced + 1], BOOT_GAP_S)
-                    extended = f", gaps after records {announced} and {announced + 1} extended by {BOOT_GAP_S:.1f} s"
+                    # Two-stage boot file: the pre-loader stops the motor after the record
+                    # from the first header byte and restarts it before it reads the next one.
+                    if not announced < pause < (len(boot) + RECORD_SIZE - 1) // RECORD_SIZE:
+                        raise SystemExit(f"{program}: pause record {pause} in the first header byte "
+                                         f"is not a record the pre-loader reads")
+                    extend_gaps(part, [pause], BOOT_GAP_S)
+                    extended = f", gap after record {pause} extended by {BOOT_GAP_S:.1f} s"
                 if rate is None:
                     rate, level = data_track_format(part)
                 if audio:
