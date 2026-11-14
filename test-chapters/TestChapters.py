@@ -24,7 +24,7 @@ with --write-audio, for example after changing the cues, using the Windows
 speech synthesizer.
 
 The test
-1. assembles the boot code and checks that basic_syncer is still at 2045,
+1. assembles and packs the boot code (Pack.py) and checks that basic_syncer is still at 2045,
    the address C1.BAS calls,
 2. builds the tape with Bin2Wav.py, which also runs its boot check,
 3. plays the tape in the headless AltirraBridgeServer at real tape speed
@@ -59,6 +59,7 @@ TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(TEST_DIR)
 sys.path.insert(0, PROJECT_DIR)
 import Bin2Wav  # noqa: E402
+import Pack  # noqa: E402
 
 SYNCER_ADDRESS = 2045          # the address C1.BAS calls with USR
 CUES = 3
@@ -70,17 +71,17 @@ TAPE_MARGIN_S = 20             # emulated time after the end of the tape
 
 def assemble_boot(tmp):
     sec, lab = os.path.join(tmp, "Boot.sec"), os.path.join(tmp, "Boot.lab")
-    r = subprocess.run(["mads", os.path.join(PROJECT_DIR, "boot", "Boot.asm"), f"-o:{sec}", f"-t:{lab}"],
+    image = os.path.join(tmp, "Boot.bin")
+    r = subprocess.run(["mads", os.path.join(PROJECT_DIR, "boot", "Boot.asm"), f"-o:{image}", f"-t:{lab}"],
                        capture_output=True, text=True)
-    if r.returncode != 0 or not os.path.exists(sec):
+    if r.returncode != 0 or not os.path.exists(image):
         sys.stderr.write(r.stdout + r.stderr)
         raise SystemExit("assembling boot/Boot.asm failed")
-    labels = {}
-    with open(lab) as f:
-        for line in f:
-            m = re.match(r"^\S+\s+([0-9A-F]{4})\s+(\S+)\s*$", line)
-            if m:
-                labels[m.group(2).upper()] = int(m.group(1), 16)
+    labels = Pack.read_labels(lab)
+    with open(image, "rb") as f:
+        boot, _ = Pack.pack(f.read(), labels)
+    with open(sec, "wb") as f:
+        f.write(boot)
     for name in ("BASIC_SYNCER", "INTRO.DLIST", "INTRO.TEXT_LINE"):
         if name not in labels:
             raise SystemExit(f"label {name.lower()} not found in boot/Boot.asm")

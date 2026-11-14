@@ -1,18 +1,20 @@
 ;
-;	@com.wudsn.ide.lng.outputfile=Boot.sec
+;	@com.wudsn.ide.lng.outputfile=Boot.bin
 ;
-; Boot file of the Atari Tape Book, see plans/01_INTRO_DURING_LOADING_PLAN.md
-; and plans/04_SMALLER_BOOT_PLAN.md.
+; Boot file of the Atari Tape Book, see plans/01_INTRO_DURING_LOADING_PLAN.md,
+; plans/04_SMALLER_BOOT_PLAN.md and plans/08_ZX0_INTRO_PLAN.md.
 ;
 ; The file is a two-stage boot file. Its header announces only the boot
 ; record (BOOT_RECORDS). The OS loads it and calls the pre-loader at load
 ; address + 6, while the cassette is still open and the motor runs. The
 ; pre-loader reads the following records itself: first the second stage with
-; the title code, then the intro (intro/Intro.asm). As soon as the title code
-; is loaded (PAUSE_ADDRESS), it pauses: it stops the motor, fades the boot
-; screen to black, types the title (plans/03_BOOT_FADE_AND_TEXT_PLAN.md) and
-; restarts the motor. It shows the intro as soon as its display is loaded and
-; starts the animation when everything is loaded.
+; the title code. As soon as the title code is loaded (PAUSE_ADDRESS), it
+; pauses: it stops the motor, fades the boot screen to black, types the title
+; (plans/03_BOOT_FADE_AND_TEXT_PLAN.md) and restarts the motor. Then it reads
+; the rest of the second stage and the decompressor, and "unpack"
+; decompresses the intro and the loader module record by record, as they
+; come from the tape. It shows the intro as soon as its display is
+; decompressed and starts the animation when everything is.
 ;
 ; Memory, in this order: the boot record from $0600 (header, pre-loader), the
 ; second stage up to $0800 (the code the pause needs first, then the code that
@@ -20,6 +22,12 @@
 ; end), the intro with its font at $0800 (intro/Intro.asm), and the services
 ; the BASIC chapters call (loader/Loader.asm, plans/05_LOADER_MODULE_PLAN.md).
 ; "booter" raises MEMLO above it all, so BASIC's program area starts above it.
+; Behind it lies "unpack" with the decompressor (zx0/Zx0.asm), needed only
+; during the boot.
+;
+; MADS writes the plain image, Boot.bin. Pack.py writes the boot file
+; Boot.sec from it: $0600-$07FF and unpack_start-unpack_end as they are,
+; then pack_start-pack_end ZX0-compressed.
 ;
 ; The first header byte, which the OS ignores for cassette boot, holds the
 ; record after which the pre-loader pauses (PAUSE_RECORD). Bin2Wav.py extends
@@ -71,21 +79,21 @@ copy	lda CASBUF_DATA,y
 	cmp #>PAUSE_ADDRESS
 	bne no_pause
 	jsr pause
-	jmp next_record
+	jmp read_next
 no_pause
-	cpx #<SHOW_ADDRESS	; show the intro when its display is loaded
-	bne next_record
-	cmp #>SHOW_ADDRESS
-	bne next_record
-	jsr show_intro
-
-next_record
-	lda ptr
-	cmp #<[load_address+TOTAL_RECORDS*RECORD_SIZE]
+	cpx #<pack_start	; the second stage is loaded: the decompressor follows
+	bne no_skip
+	cmp #>pack_start
+	bne no_skip
+	mwa #unpack_start ptr
+no_skip
+	lda ptr			; the decompressor is loaded: decompress the rest
+	cmp #<unpack_end
+	bne read_next
 	lda ptr+1
-	sbc #>[load_address+TOTAL_RECORDS*RECORD_SIZE]
-	bcc read_next
-	jmp finish		; all records are loaded
+	cmp #>unpack_end
+	bne read_next
+	jmp unpack
 read_next
 	jsr read_record
 	bcc copy_record
@@ -230,7 +238,7 @@ PAUSE_ADDRESS = load_address+PAUSE_RECORD*RECORD_SIZE
 
 ; Code that runs only after the pause or after loading.
 
-; Called when the intro's display is loaded.
+; Called when the intro's display is decompressed.
 	.proc show_intro
 	jsr intro.show
 
@@ -243,9 +251,7 @@ pass_color
 	jmp put_char		; so BASIC starts on an empty screen with the cursor at home
 	.endp
 
-SHOW_ADDRESS = load_address+[[intro.display_end-load_address+RECORD_SIZE-1]/RECORD_SIZE]*RECORD_SIZE
-
-; Called when all records are loaded; returns to the OS.
+; Called when everything is decompressed; returns to the OS.
 	.proc finish
 	jsr RBLOKV		; read the end-of-file record, so CLOAD starts at the next file
 	jsr intro.start
@@ -276,16 +282,75 @@ basic_loader			; X=USR(2042[,ADR(T$),LEN(T$)])
 basic_syncer			; X=USR(2045)
 	jmp loader.sync
 
+pack_start			; compressed by Pack.py from here to pack_end
 	icl '../intro/Intro.asm'
 
 	icl '../loader/Loader.asm'
 
 image_end			; first free byte, MEMLO
-TOTAL_RECORDS = [image_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
+pack_end
+
+; Needed only during the boot, behind MEMLO: read the compressed records and
+; decompress them to pack_start. Pack.py writes this part as it is, behind the
+; second stage.
+unpack_start
+	.proc unpack
+	tsx			; for "fail"
+	stx stack
+	mwa #pack_start zx0.dst
+	jsr zx0
+	jmp finish
+
+; The next byte of the stream; reads the next record when the cassette buffer
+; is used up. Keeps the carry, as the decompressor needs.
+	.proc get_byte
+	ldx index
+	bpl have_byte
+	php
+	jsr next_record
+	plp
+	ldx #0
+have_byte
+	lda CASBUF_DATA,x
+	inx
+	stx index
+	rts
+	.endp
+
+; Read the next record and show the intro once its display is decompressed.
+	.proc next_record
+	jsr preloader.read_record
+	bcs fail
+	lda shown
+	bne done
+	lda zx0.dst
+	cmp #<intro.display_end
+	lda zx0.dst+1
+	sbc #>intro.display_end
+	bcc done
+	inc shown
+	jmp show_intro
+done	rts
+fail	ldx stack		; back to the OS with the carry set: BOOT ERROR
+	txs
+	rts
+	.endp
+
+index	.byte RECORD_SIZE	; the buffer holds the last record of the second stage
+stack	.byte 0
+shown	.byte 0
+	.endp
+
+ZX0_GET_BYTE = unpack.get_byte
+	icl '../zx0/Zx0.asm'
+unpack_code_end
+unpack_end = unpack_start+[[unpack_code_end-unpack_start+RECORD_SIZE-1]/RECORD_SIZE]*RECORD_SIZE
 
 	ert basic_loader<>USR_LOADER	; BASIC programs call these addresses
 	ert basic_syncer<>USR_SYNCER
 	ert intro.font<>INTRO_FONT_ADDRESS	; else the font's alignment wastes memory
 	ert [.len title.title_text]<>intro.CAS_LABEL_LENGTH	; the typed title matches the label
 	ert PAUSE_RECORD<=BOOT_RECORDS	; the pre-loader reads the title code itself
-	ert SHOW_ADDRESS<=PAUSE_ADDRESS
+	ert pack_start<>INTRO_FONT_ADDRESS	; the second stage ends at a record boundary
+	ert [pack_start-load_address]%RECORD_SIZE<>0
+	ert PAUSE_ADDRESS>=pack_start

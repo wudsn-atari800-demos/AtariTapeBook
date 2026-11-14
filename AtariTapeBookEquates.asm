@@ -22,6 +22,9 @@ INTRO_FONT_ADDRESS = $0800	; the intro's 1K font, directly above the boot code a
 USR_LOADER = INTRO_FONT_ADDRESS-6	; 2042: X=USR(2042[,ADR(T$),LEN(T$)]) loads and runs the next chapter, showing T$ or LOADING
 USR_SYNCER = INTRO_FONT_ADDRESS-3	; 2045: X=USR(2045) waits for the next cue of a run section
 
+; Zero page, during the boot only: BASIC's zero page, not yet in use
+ZP_ZX0 = $80			; 9 bytes, the ZX0 decompressor (zx0/Zx0.asm)
+
 ; Zero page, $CB-$D1 are free for the user
 ZP_INTRO_SRC = $CB		; 2 bytes, copy source of the intro
 ZP_INTRO_DST = $CD		; 2 bytes, copy destination of the intro

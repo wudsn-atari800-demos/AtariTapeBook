@@ -9,6 +9,7 @@ The software is provide as a stereo tape in ".wav" format with 44.1kHz sample ra
 The left channel contains the audio-track, the right channel contain the data track with standard 600 baud data rate.
 The data track contains a short boot loader, to allow booting with the `START` key held during power-up.
 The boot loader fades the boot screen to black, types the title and `LOADING`, and then loads the animated cassette intro from the `intro` folder, which is shown while the tape loads, see `plans/01_INTRO_DURING_LOADING_PLAN.md` and `plans/03_BOOT_FADE_AND_TEXT_PLAN.md`.
+The intro and the BASIC services are stored ZX0-compressed and decompressed record by record while they load (`zx0/Zx0.asm`), see `plans/08_ZX0_INTRO_PLAN.md`.
 While the intro loads, a narrator speaks on the audio track, from the moment the loading continues after the title. The text is in `boot/Narration.txt`; `Makefile.bat` speaks it into `boot/Boot.WAV` with the Windows speech synthesizer if that file is missing, and `boot/Make-Narration.bat` speaks it again after the text changed. A recording can replace `boot/Boot.WAV`. `Bin2Wav.py` places it and stops if it is longer than the loading, see `plans/07_BOOT_NARRATION_PLAN.md`.
 The boot loader is followed by a chain for Atari BASIC programs saved in `CSAVE` format with short inter-recording gaps (IRG).
 The short IRGs reducde the loading time.
@@ -39,8 +40,8 @@ The build is started with `Makefile.bat` and requires the following tools.
 
 | Tool | Version | Download | Purpose |
 |------|---------|----------|---------|
-| Python | 3.9 or later | [python.org](https://www.python.org/downloads/) | Runs `Bin2Wav.py`, which builds the tape. Only the standard library is used. |
-| MADS | latest | [WUDSN IDE Tools](https://github.com/wudsn/wudsn-ide-tools) | Assembles `boot/Boot.asm` to `boot/Boot.sec`. |
+| Python | 3.9 or later | [python.org](https://www.python.org/downloads/) | Runs `Pack.py`, which compresses the intro with `Zx0.py`, and `Bin2Wav.py`, which builds the tape. Only the standard library is used. |
+| MADS | latest | [WUDSN IDE Tools](https://github.com/wudsn/wudsn-ide-tools) | Assembles `boot/Boot.asm` to the plain image `boot/Boot.bin`, from which `Pack.py` writes the boot file `boot/Boot.sec`. |
 | Java | 21, latest update | [Adoptium](https://adoptium.net/) | Runs TURGEN. |
 | TURGEN | latest | [TURGEN](https://turgen.sourceforge.io/) | Its GENCAS tool converts the boot file and the BASIC programs to 600 baud tape records. |
 | AltirraBridge | nightly | [AltirraSDL releases](https://github.com/ilmenit/AltirraSDL/releases/tag/nightly-bridge) | Headless Altirra that boots the new tape and checks the boot file. |

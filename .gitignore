@@ -6,4 +6,5 @@
 /test-chapters/TestChapters.wav
 __pycache__/
 /boot/Boot.sec
+/boot/Boot.bin
 /build/

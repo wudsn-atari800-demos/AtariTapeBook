@@ -1,11 +1,7 @@
-Welcome to the Atari Tape Book. While the cassette is loading, let me tell you what this tape is about.
+Welcome to the Atari Tape Book. While the cassette loads, let me tell you what this tape is about.
 
-This is a book on tape for the Atari eight-bit home computers. Each chapter is a program in Atari BASIC, and many chapters come with a voice like mine, which you hear through the speaker of your television.
+This is a book on tape for the Atari eight-bit computers. Each chapter is a program in Atari BASIC, and many come with a voice like mine, from the speaker of your television. When a chapter is finished, it loads the next one. So please leave the cassette in the recorder.
 
-When a chapter is finished, it loads the next one from the tape. So please leave the cassette in the recorder, and do not press any of its buttons.
-
-Some chapters follow the narration step by step. The tape carries signals between the words, and the program reads them to keep the picture in time with the voice.
-
-In the nineteen eighties, tapes like this taught languages, typing and programming. The Atari Tape Book picks up this idea, and tells the story of the cassette as a medium for programs, sound and learning.
+Some chapters follow the narration step by step: the tape carries signals that keep the picture in time with the voice.
 
 The first chapter comes next. Sit back, and watch the reels turn.
