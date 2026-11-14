@@ -44,6 +44,14 @@ basic_syncer			; BASIC entry point
 	pla
 	jmp syncer
 
+	.proc motor
+start	lda #START_MOTOR	; Start tape
+	.byte $2c
+stop	lda #STOP_MOTOR	; Stop tape
+	sta PACTL
+	rts
+	.endp
+
 ; Second stage: load the intro records that follow the boot records.
 	.proc preloader
 ptr	= ZP_LOADER_PTR
@@ -90,9 +98,8 @@ fail	rts			; carry set: the OS shows BOOT ERROR
 
 done	jsr RBLOKV		; read the end-of-file record, so CLOAD starts at the next file
 	jsr intro.start
-	mva #STOP_MOTOR PACTL	; Stop tape
-	clc
-	rts
+	clc			; boot continues; motor.stop keeps the carry
+	jmp motor.stop
 
 read_record			; carry set on error
 	jsr RBLOKV
@@ -244,7 +251,7 @@ HATABE	.ds HATAB_SIZE
 	.endp			; loader
 
 	.proc syncer
-	mva #START_MOTOR PACTL
+	jsr motor.start
 	lda #50			; Wait 1 s
 	jsr wait
 	lda #$10		; Mask for the serial input bit
@@ -254,8 +261,7 @@ wait_sio_1			; Wait until SIO=1
 wait_sio_0			; Wait until SIO=0 again
 	bit SKSTAT
 	bne wait_sio_0
-	mva #STOP_MOTOR PACTL
-	rts
+	jmp motor.stop
 	.endp
 
 image_end			; first free byte, MEMLO
