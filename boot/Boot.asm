@@ -6,15 +6,17 @@
 ; The file is a two-stage boot file. Its header announces only the boot
 ; records (BOOT_RECORDS). The OS loads them and calls load address + 6,
 ; while the cassette is still open and the motor runs. There, the pre-loader
-; reads the records of the intro (intro/Intro.asm), which follow directly on
-; the tape, shows the intro as soon as its display is loaded and starts the
-; animation when everything is loaded.
+; stops the motor, fades the boot screen to black and types the title, see
+; plans/03_BOOT_FADE_AND_TEXT_PLAN.md. Then it restarts the motor, reads the
+; records of the intro (intro/Intro.asm), which follow directly on the tape,
+; shows the intro as soon as its display is loaded and starts the animation
+; when everything is loaded.
 ;
 ; Memory, in this order: the boot records from $0600 (header, BASIC entry
-; points, pre-loader), the intro with its font at $0800, and the code that
-; runs only after everything is loaded (init routine, CLOAD/RUN typing, BASIC
-; syncer). "booter" raises MEMLO above it all, so BASIC's program area
-; starts above it.
+; points, motor control, pre-loader with fade and title), code that runs
+; only after everything is loaded, as much as fits below $0800, the intro
+; with its font at $0800, and the rest of that code. "booter" raises MEMLO
+; above it all, so BASIC's program area starts above it.
 
 
 	icl '../AtariTapeBookEquates.asm'
@@ -52,10 +54,116 @@ stop	lda #STOP_MOTOR	; Stop tape
 	rts
 	.endp
 
+	.proc wait
+	clc
+	adc RTCLOK+2
+loop	cmp RTCLOK+2
+	bne loop
+	rts
+	.endp
+
+; Fade the boot screen to black and type the title, see plan 03.
+	.proc title
+FADE_FRAMES = 2			; frames per fade step
+TYPE_FRAMES = 10		; frames per typed letter
+
+	ldx #4			; keep the OS colors, the intro restores them in "off"
+save_color
+	mva COLOR0,x colors,x
+	dex
+	bpl save_color
+
+fade	ldy #0			; number of colors not yet at luminance 0
+	ldx #4
+fade_color
+	lda COLOR0,x
+	and #$0F
+	beq next_color		; luminance 0 already
+	iny
+	cmp #2
+	lda COLOR0,x
+	bcs darker
+	and #$F0		; luminance 1 becomes 0
+	bcc store_color
+darker	sbc #2
+store_color
+	sta COLOR0,x
+next_color
+	dex
+	bpl fade_color
+	lda #FADE_FRAMES
+	jsr wait
+	tya
+	bne fade
+
+	ldx #4			; black
+	lda #0
+black	sta COLOR0,x
+	dex
+	bpl black
+	mva #1 CRSINH		; no cursor
+	lda #$7D		; clear the screen
+	jsr put_char
+	mva #intro.INK COLOR1	; the intro's colors, the others are black already
+
+	mva #intro.CAS_LABEL_Y ROWCRS	; the title, inverse like on the cassette's label
+	mva #intro.CAS_LABEL_X COLCRS
+	ldx #0
+	ldy #intro.CAS_LABEL_LENGTH
+	jsr type
+	mva #intro.TEXT_ROW ROWCRS	; LOADING, centered in the intro's text row
+	mva #[40-LOADING_LENGTH]/2 COLCRS
+	ldx #title_text_length
+	ldy #title_text_length+LOADING_LENGTH
+
+; Type the letters X to Y-1 of the texts at the cursor, one every TYPE_FRAMES.
+type	sty end
+next_letter
+	txa
+	pha
+	lda texts,x
+	jsr put_char
+	lda #TYPE_FRAMES
+	jsr wait
+	pla
+	tax
+	inx
+	cpx end
+	bne next_letter
+	rts
+
+; Put the character in A with the screen editor's PUT routine. Its address-1 is
+; in the editor's handler table in ROM; RTS jumps there, and its RTS returns to
+; the caller of put_char.
+put_char
+	tax
+	lda EDITRV+7
+	pha
+	lda EDITRV+6
+	pha
+	txa
+	rts
+
+texts	dta c'ATARI TAPE BOOK'*		; ATASCII, inverse
+title_text_length = *-texts
+	dta c'LOADING'			; ATASCII
+LOADING_LENGTH = *-texts-title_text_length
+
+colors	.ds 5			; COLOR0-COLOR4 before the fade
+end	.byte 0
+	.endp
+
 ; Second stage: load the intro records that follow the boot records.
 	.proc preloader
 ptr	= ZP_LOADER_PTR
 LAST_BOOT_RECORD = load_address+[BOOT_RECORDS-1]*RECORD_SIZE
+MOTOR_START_FRAMES = 25		; about 0.5 s for the motor to reach its speed
+
+	jsr motor.stop		; the tape must not run on while the title is typed
+	jsr title
+	jsr motor.start
+	lda #MOTOR_START_FRAMES
+	jsr wait
 
 	ldx #RECORD_SIZE-1	; AltirraOS reads one record more than announced; if the
 compare				; original OS does not, the buffer still holds the last boot record
@@ -85,6 +193,13 @@ copy	lda CASBUF_DATA,y
 	bcc next_record
 	inc shown
 	jsr intro.show
+	ldx #4			; "off" restores the colors from before the fade
+pass_color
+	mva title.colors,x intro.os_colors,x
+	dex
+	bpl pass_color
+	lda #$7D		; clear the now hidden OS screen with the typed texts,
+	jsr title.put_char	; so BASIC starts on an empty screen with the cursor at home
 
 next_record
 	lda ptr
@@ -113,18 +228,8 @@ shown	.byte 0
 boot_end
 BOOT_RECORDS = [boot_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
 
-	icl '../intro/Intro.asm'
-
-; Third part: everything that runs only after the pre-loader has loaded the
-; whole file: the init routine, the CLOAD/RUN typing and the BASIC syncer.
-	.proc wait
-	clc
-	adc RTCLOK+2
-loop	cmp RTCLOK+2
-	bne loop
-	rts
-	.endp
-
+; Code that runs only after the pre-loader has loaded the whole file: as much
+; as fits in front of the intro's font at $0800, the rest behind the intro.
 	.proc booter
 	mva #2 BOOT?		; cassette boot done: the OS calls CASINI on RESET
 	mva #$00 COLDST
@@ -138,6 +243,26 @@ loop	cmp RTCLOK+2
 	mwa #image_end MEMLO
 	rts
 	.endp
+
+	.proc syncer
+	jsr motor.start
+	lda #50			; Wait 1 s
+	jsr wait
+	lda #$10		; Mask for the serial input bit
+wait_sio_1			; Wait until SIO=1
+	bit SKSTAT
+	beq wait_sio_1
+wait_sio_0			; Wait until SIO=0 again
+	bit SKSTAT
+	bne wait_sio_0
+	jmp motor.stop
+	.endp
+
+	icl '../intro/Intro.asm'
+
+; The rest of the code that runs only after everything is loaded.
+
+
 
 ; USR(1550[,ADR(T$),LEN(T$)]): load and run the next section. The intro shows
 ; the passed text below the cassette while it loads, or LOADING without
@@ -250,19 +375,6 @@ HATABE	.ds HATAB_SIZE
 
 	.endp			; loader
 
-	.proc syncer
-	jsr motor.start
-	lda #50			; Wait 1 s
-	jsr wait
-	lda #$10		; Mask for the serial input bit
-wait_sio_1			; Wait until SIO=1
-	bit SKSTAT
-	beq wait_sio_1
-wait_sio_0			; Wait until SIO=0 again
-	bit SKSTAT
-	bne wait_sio_0
-	jmp motor.stop
-	.endp
 
 image_end			; first free byte, MEMLO
 TOTAL_RECORDS = [image_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
@@ -270,3 +382,4 @@ TOTAL_RECORDS = [image_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
 	ert basic_loader<>USR_LOADER	; BASIC programs call these addresses
 	ert basic_syncer<>USR_SYNCER
 	ert intro.font<>INTRO_FONT_ADDRESS	; else the font's alignment wastes memory
+	ert title.title_text_length<>intro.CAS_LABEL_LENGTH	; the typed title matches the label

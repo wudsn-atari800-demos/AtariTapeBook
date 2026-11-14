@@ -27,7 +27,7 @@ loads, with a text such as "LOADING" below the cassette, see
   step, `DIR = -1` reverses (rewind). Settings at the top of `Intro.asm`.
 * Own display list and screen memory (the screen map), so BASIC's output during
   loading does not show. The VBI keeps the display list, font and colors in
-  place, and `intro.off` restores those of the OS.
+  place, and `intro.off` restores those of the OS, including `COLOR0`-`COLOR4`.
 * Color registers: `COLOR1=$0E` (ink, white), `COLOR2=$00` (paper, black),
   `COLOR4=$00` (border).
 
@@ -36,7 +36,8 @@ loads, with a text such as "LOADING" below the cassette, see
 | File             | Content                                               |
 |------------------|-------------------------------------------------------|
 | `Intro.asm`      | the intro, included by `boot/Boot.asm` and `Intro-Demo.asm`; entry points `intro.show`, `intro.start`, `intro.on`, `intro.off`, `intro.set_text` |
-| `Intro-Data.asm` | 40x24 screen map, reel frames, constants (included by `Intro.asm`) |
+| `Intro-Data.asm` | constants, label position, 40x24 screen map (included by `Intro.asm`) |
+| `Intro-Frames.asm` | reel frames (included by `Intro.asm`) |
 | `Intro.fnt`      | 1 KB font (cassette characters, reel frame 0, label letters as in the ROM) |
 | `Intro-Demo.asm` | standalone demo                                       |
 | `Intro-Demo.bat` | builds the standalone demo and starts it in Altirra   |

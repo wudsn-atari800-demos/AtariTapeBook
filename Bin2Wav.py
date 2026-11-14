@@ -39,6 +39,11 @@ without extension, and the files with that base name decide its type:
   it would otherwise be read as pulses when the program starts the motor.
 - A load section must not have a .TXT file; cues belong to run sections.
 
+If the boot file holds more records than its header announces (a two-stage
+boot file, see boot/Boot.asm), the gaps after the announced records and after
+the next record are extended by BOOT_GAP_S of mark tone, because the
+pre-loader stops the motor there and restarts it before it reads on.
+
 The Atari plays the left channel through the TV speaker while the tape motor
 runs.  The program must keep the motor running (POKE 54018,52) until the
 audio has ended before it CLOADs the next file; a CLOAD issued earlier times
@@ -162,6 +167,7 @@ CUE_PULSE_S = 0.335         # length of a cue pulse, as on the "Conversational" 
 CUE_MIN_DISTANCE_S = 1.0    # closer cues are hard to see for a BASIC loop
 CUE_SPIN_UP_S = 2.0         # keep the first cue away from the motor start
 AUDIO_LEAD_IN_S = 1.0       # silence before the audio of a run section, while the motor spins up
+BOOT_GAP_S = 2.0            # extra mark tone where the pre-loader stops and restarts the motor (plan 03)
 
 
 def read_cues(path):
@@ -244,6 +250,61 @@ def make_run_section(audio_wav, cue_file, rate, level, output, phase=0.0):
     right, _ = sync_cotrack(rate, len(left), [AUDIO_LEAD_IN_S + t for t in cues], level, phase)
     write_stereo(output, rate, left, right)
     return len(left) / rate, audio_seconds, cues
+
+
+def mark_gaps(data, rate, count=None, min_seconds=0.1):
+    """Return the (start, end) samples of the mark tone stretches longer than `min_seconds`:
+    the leader first, then the gap after each record. With `count`, the search stops after
+    that many gaps, so only the start of the data is scanned."""
+    split = rate / ((MARK_HZ + SPACE_HZ) / 2)
+    gaps, start = [], None
+    c0 = c1 = None                                           # the two previous zero crossings
+    negative = data[0] < 0
+    for i in range(1, len(data)):
+        if (data[i] < 0) == negative:
+            continue
+        negative = not negative
+        if c0 is not None:
+            if i - c0 < split:                               # a full period of mark tone
+                if start is None:
+                    start = c0
+            elif start is not None:
+                if c1 - start > min_seconds * rate:
+                    gaps.append((start, c1))
+                    if count is not None and len(gaps) >= count:
+                        break
+                start = None
+        c0, c1 = c1, i
+    return gaps
+
+
+def extend_gaps(load_wav, records, seconds):
+    """Extend the gaps after the given records (counted from 1) of a GENCAS .wav by `seconds`
+    of mark tone. The tone is continued by repeating whole periods of the gap's own tone,
+    starting and ending at a rising zero crossing, so the signal stays continuous."""
+    with wave.open(load_wav, "rb") as w:
+        rate = w.getframerate()
+        frames = array("h")
+        frames.frombytes(w.readframes(w.getnframes()))
+    data = frames[1::2]
+    gaps = mark_gaps(data, rate, max(records) + 1)        # up to the gap after the last record
+    for record in sorted(records, reverse=True):
+        if record >= len(gaps):
+            raise SystemExit(f"{load_wav}: no gap after record {record} found")
+        start, end = gaps[record]
+        rising = [i for i in range((start + end) // 2, end) if data[i - 1] < 0 <= data[i]]
+        if len(rising) < 51:
+            raise SystemExit(f"{load_wav}: the gap after record {record} is too short to extend")
+        period = data[rising[0]:rising[50]]                   # 50 whole periods
+        tone = period * (int(seconds * rate) // len(period) + 1)
+        data = data[:rising[0]] + tone + data[rising[0]:]
+    out = array("h", bytes(4 * len(data)))
+    out[1::2] = data                                         # the left (audio) channel stays silent
+    with wave.open(load_wav, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(out.tobytes())
 
 
 def silence_eof_record(load_wav, level):
@@ -455,6 +516,14 @@ def main():
                     gaps.append("-s")
                 gencas(args.turgen, ["-mode:plain", "-r", *gaps, "-o:wav", program, part])
                 gencas(args.turgen, ["-mode:plain", *(["-a"] if i else ["-r"]), *gaps, program, cas])
+                extended = ""
+                announced = boot[1] if len(boot) >= 6 else 0
+                if i == 0 and 0 < announced and len(boot) > announced * RECORD_SIZE:
+                    # Two-stage boot file: the pre-loader stops the motor before it reads the
+                    # next record. Which record that is depends on whether the OS read one
+                    # record more than announced, so both gaps are extended.
+                    extend_gaps(part, [announced, announced + 1], BOOT_GAP_S)
+                    extended = f", gaps after records {announced} and {announced + 1} extended by {BOOT_GAP_S:.1f} s"
                 if rate is None:
                     rate, level = data_track_format(part)
                 if audio:
@@ -466,7 +535,7 @@ def main():
                 else:
                     with wave.open(part, "rb") as w:
                         data_s = w.getnframes() / w.getframerate()
-                    overview.append((data_s, f"load {os.path.basename(program)}, records {data_s:.1f} s"))
+                    overview.append((data_s, f"load {os.path.basename(program)}, records {data_s:.1f} s{extended}"))
             else:
                 phase = 0.0
                 if inputs[i - 1][0]:                   # follows a load section

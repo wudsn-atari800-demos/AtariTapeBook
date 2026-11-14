@@ -9,12 +9,12 @@
 
 	opt h+
 
-	org $2000
+	org $2000		; 1K aligned, so the intro's font starts here
+
+	icl 'Intro.asm'
 
 start	jsr intro.show
 	jsr intro.start
 	jmp *
-
-	icl 'Intro.asm'
 
 	run start

@@ -32,9 +32,11 @@ The test
 4. checks that exactly three cues and DONE appear, with the cue spacing
    of C1A.TXT, and that the text of every section appears after the
    previous cue and before its own cue,
-5. checks that the intro (intro/Intro.asm, loaded by the boot file) is on
-   screen while C1.BAS loads, with the text LOADING below the cassette, and
-   off when it runs.
+5. checks that the pre-loader types ATARI TAPE BOOK and LOADING on the OS
+   screen before the intro shows (plan 03), that the intro
+   (intro/Intro.asm, loaded by the boot file) is on screen while C1.BAS
+   loads, with the text LOADING below the cassette, and off when it runs,
+   and that the OS colors from before the pre-loader's fade are back then.
 
 The tape is kept as TestChapters.wav, so PlayChapters.bat can play it in Altirra.
 
@@ -208,14 +210,15 @@ def intro_text(a, text_line):
 
 
 def play_tape(tape, seconds, intro_dlist, text_line):
-    """Play the tape and return {screen line: emulated time of its first appearance} and
-    (emulated time, intro text) for every check at which the intro's display list was shown."""
+    """Play the tape and return {screen line: emulated time of its first appearance},
+    (emulated time, intro text) for every check at which the intro's display list was shown,
+    and COLOR0-COLOR4 at the start and when the test program runs."""
     server_dir = Bin2Wav.folder_in_path("AltirraBridgeServer", "--server-dir")
     sys.path.insert(0, os.path.join(server_dir, "sdk", "python"))
     from altirra_bridge import AltirraBridge  # noqa: E402
 
     proc, token_file = Bin2Wav.start_server(server_dir)
-    seen, intro_times = {}, []
+    seen, intro_times, colors = {}, [], {}
     try:
         with AltirraBridge.from_token_file(token_file) as a:
             a.config("basic", "on")
@@ -226,6 +229,10 @@ def play_tape(tape, seconds, intro_dlist, text_line):
             step = 5
             for frame in range(0, int((seconds + TAPE_MARGIN_S) * fps), step):
                 a.frame(step)
+                if "start" not in colors:
+                    colors["start"] = list(a.peek(0x2C4, 5))          # COLOR0-COLOR4
+                if "SYNC TEST" in seen and "run" not in colors:
+                    colors["run"] = list(a.peek(0x2C4, 5))
                 if a.peek16(0x230) == intro_dlist:      # SDLSTL
                     intro_times.append(((frame + step) / fps, intro_text(a, text_line)))
                 for line in screen_lines(a):
@@ -239,7 +246,7 @@ def play_tape(tape, seconds, intro_dlist, text_line):
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-    return seen, intro_times
+    return seen, intro_times, colors
 
 
 def main():
@@ -258,7 +265,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         boot, intro_dlist, text_line = assemble_boot(tmp)
         seconds = build_tape(boot, tape)
-        seen, intro_times = play_tape(tape, seconds, intro_dlist, text_line)
+        seen, intro_times, colors = play_tape(tape, seconds, intro_dlist, text_line)
 
     for line, t in sorted(seen.items(), key=lambda item: item[1]):
         print(f"  {t:6.1f} s: {line}")
@@ -288,6 +295,16 @@ def main():
                 errors.append(f"the text of section {n} appeared at {min(shown):.1f} s, "
                               f"not between {previous:.1f} s and CUE {n} at {times[n - 1]:.1f} s")
             previous = times[n - 1]
+    # The pre-loader types the title and LOADING on the OS screen before the intro shows.
+    first_intro = min((t for t, _ in intro_times), default=None)
+    for text in ("ATARI TAPE BOOK", "LOADING"):
+        if text not in seen:
+            errors.append(f"the pre-loader did not type {text}")
+        elif first_intro is not None and seen[text] >= first_intro:
+            errors.append(f"{text} appeared at {seen[text]:.1f} s, not before the intro at {first_intro:.1f} s")
+    if colors.get("start") != colors.get("run"):
+        errors.append(f"COLOR0-COLOR4 when C1.BAS runs are {colors.get('run')}, "
+                      f"not those from before the fade {colors.get('start')}")
     # The intro is on screen while C1.BAS loads, between CLOAD and RUN, and off when it runs.
     if "CLOAD" in seen and "RUN" in seen:
         loading = [text for t, text in intro_times if seen["CLOAD"] < t < seen["RUN"]]
@@ -301,7 +318,7 @@ def main():
         for e in errors:
             print("FAIL:", e)
         return 1
-    print(f"PASS: intro with LOADING shown while loading, {CUES} section texts and cues in order with the expected spacing, "
+    print(f"PASS: title typed, intro with LOADING shown while loading, OS colors restored, {CUES} section texts and cues in order with the expected spacing, "
           f"then DONE")
     return 0
 

@@ -10,11 +10,11 @@
 ;
 ; Memory layout, in this order so that the display can be shown before the
 ; reel frames are loaded:
-;   display code and variables, font (1K aligned), display list, screen map
-;   (Intro-Data.asm), reel frames (Intro-Data.asm), animation code, frame
-;   table
-; The display code is small enough to fit with the boot code below the font
-; at $0800, so the font's alignment wastes no memory.
+;   font (1K aligned), display list, screen map (Intro-Data.asm), display
+;   code and variables, reel frames (Intro-Frames.asm), animation code,
+;   frame table
+; The font is the first part, so a main source file can put other code in
+; front of it up to the 1K boundary.
 ;
 ; Character layout (see plans/02_LOADING_TEXT_PLAN.md): space, "-.:", the
 ; digits and the uppercase letters sit at their standard internal codes of
@@ -84,6 +84,21 @@ TEXT_ROW = 20		; row of the text, one blank row below the cassette (rows 5-18)
 TEXT_WIDTH = 38		; maximum length of the text
 
 ; ---------------------------------------------------------------------------
+	.align $400
+
+font	ins 'Intro.fnt'
+
+dlist	.byte $70,$70,$70
+	.byte $42,<cas_screen,>cas_screen
+	.rept 23
+	.byte $02
+	.endr
+	.byte $41,<dlist,>dlist
+
+	icl 'Intro-Data.asm'
+
+; Display part: everything "show" and the VBI's display handling need.
+; ---------------------------------------------------------------------------
 show	jsr copy_rom_chars
 on	jsr write_text
 	lda active
@@ -91,9 +106,11 @@ on	jsr write_text
 				; save the OS display, to restore it in "off"
 	mwa SDLSTL os_dlist
 	mva CHBAS os_chbas
-	mva COLOR1 os_color1
-	mva COLOR2 os_color2
-	mva COLOR4 os_color4
+	ldx #4
+save_color
+	mva COLOR0,x os_colors,x
+	dex
+	bpl save_color
 	lda #6			; immediate VBI
 	ldy #<vbi
 	ldx #>vbi
@@ -236,25 +253,11 @@ visible_set	.byte 0		; 0 = set A, 1 = set B
 base		.byte 0
 os_dlist	.word 0
 os_chbas	.byte 0
-os_color1	.byte 0
-os_color2	.byte 0
-os_color4	.byte 0
+os_colors	.ds 5		; COLOR0-COLOR4 of the OS, restored by "off"
 
-; ---------------------------------------------------------------------------
-	.align $400
+display_end			; everything "show" needs lies below
 
-font	ins 'Intro.fnt'
-
-dlist	.byte $70,$70,$70
-	.byte $42,<cas_screen,>cas_screen
-	.rept 23
-	.byte $02
-	.endr
-	.byte $41,<dlist,>dlist
-
-	icl 'Intro-Data.asm'
-
-display_end = cas_frames	; everything "show" needs lies below
+	icl 'Intro-Frames.asm'
 
 ; ---------------------------------------------------------------------------
 ; Animation part of the VBI, needed only after the reel frames are loaded.
@@ -322,9 +325,11 @@ off	lda active
 	jsr SETVBV
 	mwa os_dlist SDLSTL
 	mva os_chbas CHBAS
-	mva os_color1 COLOR1
-	mva os_color2 COLOR2
-	mva os_color4 COLOR4
+	ldx #4
+restore_color
+	mva os_colors,x COLOR0,x
+	dex
+	bpl restore_color
 	mva #0 active
 off_done
 	rts

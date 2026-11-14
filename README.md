@@ -8,7 +8,7 @@ The content language is German. Maybe English will be added later.
 The software is provide as a stereo tape in ".wav" format with 44.1kHz sample rate and 16-bit resolution.
 The left channel contains the audio-track, the right channel contain the data track with standard 600 baud data rate.
 The data track contains a short boot loader, to allow booting with the `START` key held during power-up.
-The boot loader loads the animated cassette intro from the `intro` folder, which is shown while the tape loads, see `plans/01_INTRO_DURING_LOADING_PLAN.md`.
+The boot loader fades the boot screen to black, types the title and `LOADING`, and then loads the animated cassette intro from the `intro` folder, which is shown while the tape loads, see `plans/01_INTRO_DURING_LOADING_PLAN.md` and `plans/03_BOOT_FADE_AND_TEXT_PLAN.md`.
 The bool loader is followed by a chain for Atari BASIC programs saved in `CSAVE` format with short inter-recording gaps (IRG).
 The short IRGs reducde the loading time.
 

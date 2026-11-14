@@ -2,7 +2,40 @@
 
 Written 2026-11-14. Requested after plan 02.
 
-**Status: planned.**
+**Status: executed 2026-11-14.** Decision on "Memory": the display code
+moved after the screen map, so the progressive display stays. Implementation
+notes beyond the plan:
+
+- Layout: boot records $0600-$074F (header, BASIC entry points, `motor`,
+  `wait`, `title`, pre-loader), then `booter`, `reset` and `syncer`, the intro from $0800 (font, display list, screen map, display code
+  and variables, reel frames, animation code), and `loader_text` and
+  `loader` behind it. `MEMLO` rises from $163F to $172D.
+- `gen.py` writes `Intro-Frames.asm` (reel frames) besides `Intro-Data.asm`
+  (constants, screen map) and exports the label position
+  (`CAS_LABEL_X`, `CAS_LABEL_Y`, `CAS_LABEL_LENGTH`), which the pre-loader
+  uses to type the title; an `ert` checks that the typed title has the
+  label's length.
+- The pre-loader puts the characters with the screen editor's PUT routine,
+  called through its vector in the ROM handler table (`EDITRV`+6, pushed
+  and jumped to with `RTS`), instead of writing to the screen memory: `$7D`
+  clears the screen, `ROWCRS`/`COLCRS` set the positions, and the texts are
+  stored as ATASCII, the title inverse (`dta c'...'*`). This made the code
+  41 bytes smaller than direct writes. Because the cursor then stands after
+  `LOADING`, the pre-loader puts `$7D` again right after `intro.show`, so
+  BASIC starts on an empty screen with its cursor at home.
+- The pre-loader passes the colors from before the fade to the intro right
+  after `intro.show`; `intro.on`/`intro.off` save and restore
+  `COLOR0`-`COLOR4`.
+- `Intro-Demo.asm` places the intro first, so its font starts at $2000
+  without a gap.
+
+Verification: `TestChapters.bat` passes and also checks that both texts
+appear on the OS screen before the intro and that `COLOR0`-`COLOR4` are the
+OS colors again when `C1.BAS` runs. Screenshots show the title being typed
+on the black screen and both texts staying in place when the intro appears.
+The tape has gaps of 2.26 s after records 3 and 4 of the boot file. The
+fade itself (7 steps of 2 frames) was only checked by the register values
+before and after it.
 
 ## Goal
 
