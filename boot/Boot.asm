@@ -16,9 +16,10 @@
 ;
 ; Memory, in this order: the boot record from $0600 (header, pre-loader), the
 ; second stage up to $0800 (the code the pause needs first, then the code that
-; runs after loading, and the BASIC entry points at the end), the intro with
-; its font at $0800, and the rest of the code that runs after loading. "booter"
-; raises MEMLO above it all, so BASIC's program area starts above it.
+; runs after loading, and the jump table with the BASIC entry points at the
+; end), the intro with its font at $0800 (intro/Intro.asm), and the services
+; the BASIC chapters call (loader/Loader.asm, plans/05_LOADER_MODULE_PLAN.md).
+; "booter" raises MEMLO above it all, so BASIC's program area starts above it.
 ;
 ; The first header byte, which the OS ignores for cassette boot, holds the
 ; record after which the pre-loader pauses (PAUSE_RECORD). Bin2Wav.py extends
@@ -257,7 +258,7 @@ SHOW_ADDRESS = load_address+[[intro.display_end-load_address+RECORD_SIZE-1]/RECO
 	mva #$00 COLDST
 	mwa #reset CASINI
 	jsr reset
-	jsr loader
+	jsr loader.load		; load the first chapter
 	jmp (CARTCS)
 	.endp
 
@@ -266,145 +267,18 @@ SHOW_ADDRESS = load_address+[[intro.display_end-load_address+RECORD_SIZE-1]/RECO
 	rts
 	.endp
 
-	.proc syncer
-	pla			; number of arguments, none
-	jsr motor.start
-	lda #50			; Wait 1 s
-	jsr wait
-	lda #$10		; Mask for the serial input bit
-wait_sio_1			; Wait until SIO=1
-	bit SKSTAT
-	beq wait_sio_1
-wait_sio_0			; Wait until SIO=0 again
-	bit SKSTAT
-	bne wait_sio_0
-	jmp motor.stop
-	.endp
-
 ; BASIC entry points at fixed addresses directly below the intro's font, so
 ; they stay in place when code moves.
 	ert *>USR_LOADER
 	org USR_LOADER
 basic_loader			; X=USR(2042[,ADR(T$),LEN(T$)])
-	jmp loader_text
+	jmp loader.load_text
 basic_syncer			; X=USR(2045)
-	jmp syncer
+	jmp loader.sync
 
 	icl '../intro/Intro.asm'
 
-; The rest of the code that runs only after everything is loaded.
-
-; USR(2042[,ADR(T$),LEN(T$)]): load and run the next section. The intro shows
-; the passed text below the cassette while it loads, or LOADING without
-; arguments. Any other number of arguments is treated like none.
-	.proc loader_text
-ptr	= ZP_LOADER_PTR		; free after the pre-loader has finished
-
-	pla			; number of arguments
-	cmp #2
-	beq text
-	tax
-	beq default
-drop	pla			; drop the arguments
-	pla
-	dex
-	bne drop
-default	ldx #<intro.loading_text
-	ldy #>intro.loading_text
-	lda #.len intro.loading_text
-	jmp set
-
-text	pla			; address, high byte first
-	sta ptr+1
-	pla
-	sta ptr
-	pla			; length, high byte first
-	tax
-	pla
-	cpx #0
-	beq length_low
-	lda #255
-length_low
-	cmp #intro.TEXT_WIDTH+1
-	bcc length_ok
-	lda #intro.TEXT_WIDTH
-length_ok
-	sta length
-	tay			; copy the text, BASIC may change the string afterwards
-	beq copied
-copy	dey
-	lda (ptr),y
-	sta buffer,y
-	cpy #0
-	bne copy
-copied	ldx #<buffer
-	ldy #>buffer
-	lda length
-set	jsr intro.set_text
-	jmp loader
-
-length	.byte 0
-buffer	.ds intro.TEXT_WIDTH
-	.endp
-
-	.proc loader
-	ldy #HATAB_SIZE-1
-copy_loop
-	mva EDITRV,Y HATABE,Y
-	dey
-	bpl copy_loop
-
-	mwa #read_char-1 HATABE+4
-
-	ldx HATABE+6
-	ldy HATABE+7
-	inx
-	bne no_inc_hi
-	iny
-no_inc_hi
-	stx read_char.put_char+1
-	sty read_char.put_char+2
-
-	mwa #HATABE HATABS+7	; Change HATAB vector for E: handler
-	mva #[.len text]-1 char_cnt
-
-	mva #$12 CH		; Press ENTER
-	mva #$00 SOUNDR		; $00 no sound
-
-	jmp intro.on		; show the intro while the next file loads
-
-	.proc read_char
-	ldy char_cnt
-	bne not_last
-	mwa #EDITRV HATABS+7	; Reset HATAB vector for E: handler
-not_last
-	cpy #RUN_INDEX		; CLOAD is done when RUN is typed:
-	bne not_run		; the program runs on BASIC's screen
-	jsr intro.off
-	ldy char_cnt
-not_run
-	lda text,Y
-	dec char_cnt
-	pha
-put_char
-  	jsr $ffff		; Is initialized to PUTCHR
-	pla
-	ldy #$01
-return	rts
-	.endp			; read_char
-
-	.local text
-	.byte $9B,'NUR'		; RUN
-	.byte $9B,'DAOLC'	; CLOAD
-	.endl
-
-RUN_INDEX = 3			; index of the "R" of RUN in text
-
-char_cnt .byte 0
-HATABE	.ds HATAB_SIZE
-
-	.endp			; loader
-
+	icl '../loader/Loader.asm'
 
 image_end			; first free byte, MEMLO
 TOTAL_RECORDS = [image_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
