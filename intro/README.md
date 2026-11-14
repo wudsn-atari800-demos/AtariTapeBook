@@ -10,10 +10,13 @@ loads, with a text such as "LOADING" below the cassette, see
   their standard internal codes of the OS font; `intro.show` copies these 40
   characters from the OS ROM charset ($E000), so they are the standard Atari
   font (OS ROM must be enabled at that moment). The label letters are also in
-  `Intro.fnt`. The reel character sets sit at codes 64 and 80, the other 52
-  cassette characters at the remaining codes; 4 codes are spare.
-* Text: row 20, one row below the cassette, centred and inverse (white on
-  black). `intro.set_text` sets it, `intro.show` and `intro.on` write it; the
+  `Intro.fnt`. The reel character sets sit at codes 64 and 80, the other 51
+  cassette characters at the remaining codes; 5 codes are spare.
+* Colours: white ink on black paper, so the blank character $00 fills the
+  background. The white label and windows are the inverse blank ($80), the
+  label letters the inverse standard letters (black on white).
+* Text: row 20, one row below the cassette, centred, white on black.
+  `intro.set_text` sets it, `intro.show` and `intro.on` write it; the
   initial text is `LOADING`. Characters outside the 40 show as spaces.
 * Both reels share the same 16 animated chars (4x4 block). 6 notches → 60°
   period → 8 frames loop seamlessly.
@@ -25,7 +28,7 @@ loads, with a text such as "LOADING" below the cassette, see
 * Own display list and screen memory (the screen map), so BASIC's output during
   loading does not show. The VBI keeps the display list, font and colours in
   place, and `intro.off` restores those of the OS.
-* Colours: `COLOR1=$00` (ink), `COLOR2=$0E` (white, only inside the cassette),
+* Colour registers: `COLOR1=$0E` (ink, white), `COLOR2=$00` (paper, black),
   `COLOR4=$00` (border).
 
 ## Files

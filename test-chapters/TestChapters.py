@@ -198,13 +198,9 @@ def screen_lines(a):
 
 
 def intro_text(a, text_line):
-    """Return the intro's text line as a string. The text is written in inverse internal
-    codes; all other characters of the line are the cassette's solid filler."""
+    """Return the intro's text line as a string, written in internal codes."""
     chars = []
     for code in a.peek(text_line, 40):
-        if not code & 0x80:
-            chars.append(" ")
-            continue
         code &= 0x7F
         code = code + 0x20 if code < 0x40 else (code - 0x40 if code < 0x60 else code)
         chars.append(chr(code) if 32 <= code < 127 else " ")

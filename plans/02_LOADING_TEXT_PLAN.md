@@ -27,6 +27,13 @@ while the boot file and chapter 1 load, and `LOADING CHAPTER 2` while
 chapter 2 loads. The calls without arguments and with a wrong number of
 arguments are not covered by a test yet.
 
+**Review 2026-11-14:** the colours are swapped to white ink on black paper,
+so the blank character $00 fills the background instead of a solid black
+character. The white label and windows use the inverse blank ($80), the
+label letters the inverse standard letters, and the text is written in
+normal characters. This frees one more code (51 of 56 free codes used).
+The decisions below are updated to that state.
+
 ## Goal
 
 While the intro is on screen, a text line below the cassette shows what is
@@ -39,13 +46,14 @@ characters of the OS font, in the intro's own font.
   characters. Lowercase letters do not fit, see "Character layout".
 - **Standard character positions.** These 40 characters sit at their
   internal codes of the OS font. A text needs no lookup table: the internal
-  code is the ATASCII value minus 32, plus 128 for inverse.
+  code is the ATASCII value minus 32.
 - **No display list interrupt.** Switching to the ROM font for the text
   lines with a DLI does not work while the tape loads, because of the timing
   with which ANTIC asserts the NMI. The text therefore uses the intro's font.
-- **Inverse text.** Around the cassette the screen shows the solid
-  character in ink (black). Inverse characters show the glyph in the paper
-  colour (white) on ink, so the text is white on black like the surrounding.
+- **White ink on black paper.** The blank character $00 fills the
+  background, and the text is written in normal characters, white on black.
+  The white label and windows use the inverse blank ($80), the label
+  letters the inverse standard letters.
 - **Text source.** The text while the first chapter loads is just
   `LOADING`, a constant in the boot code. Every later text is passed
   complete by the chapter program with the USR call that loads the next
@@ -58,15 +66,15 @@ characters of the OS font, in the intro's own font.
 
 | Characters | Codes |
 |---|---|
-| Space (also the cassette's blank character) | 0 |
+| Space (also the cassette's black background; inverse: its white areas) | 0 |
 | `-` and `.` | 13, 14 |
 | Digits 0-9 | 16-25 |
 | `:` | 26 |
-| A-Z (also the label letters) | 33-58 |
+| A-Z (inverse: the label letters) | 33-58 |
 | Reel character set A | 64-79 |
 | Reel character set B | 80-95 |
-| Other cassette graphics (52 today) | 1-12, 15, 27-32, 59-63, 96-127 (56 codes) |
-| Spare | 4 codes |
+| Other cassette graphics (51 today) | 1-12, 15, 27-32, 59-63, 96-127 (56 codes) |
+| Spare | 5 codes |
 
 Today `gen.py` numbers the cassette characters 0-77 consecutively, which
 covers all 40 standard positions. With the layout above, the cassette's
@@ -88,7 +96,7 @@ character as base plus offset.
    ($E000) in three ranges (13-14, 16-26, 33-58), so the text can use them
    from the start. This replaces the label letter copy in `intro.start`.
 3. **Text output.** A routine writes a text into row 20 of the screen,
-   centred on the 40 columns and inverse, converting ATASCII to internal
+   centred on the 40 columns, converting ATASCII to internal
    codes. The cassette fills rows 5-18; row 19 stays blank as a gap of one
    character height, rows 21-23 stay blank too.
    `intro.show` and `intro.on` write the line once when the intro switches

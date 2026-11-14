@@ -12,6 +12,11 @@ from the OS ROM charset at start-up. The reel character sets A and B (16
 consecutive codes each) sit at 64 and 80, all other cassette characters take
 the remaining codes. The font file holds the label letters (from the table
 below) and reel set A; set B is filled at run time.
+
+Colours: white ink (COLOR1) on black paper (COLOR2), so the blank character 0
+fills the background. The white parts are set pixels; the white label and
+windows use the inverse space ($80), and the label letters are the inverse
+standard letters (black on white).
 Output: Intro.fnt, Intro-Data.asm, preview.gif
 """
 import math
@@ -122,7 +127,9 @@ def reel_tiles(f, col):
     return [tile(f, col + dc, REEL_ROW + dr) for dr in range(RB) for dc in range(RB)]
 
 
-frames = [render(math.radians(60 * i / NFRAMES)) for i in range(NFRAMES)]
+# render() draws the cassette's black parts as 1. The program shows white ink (COLOR1)
+# on black paper (COLOR2), so set pixels are the white parts: invert.
+frames = [1 - render(math.radians(60 * i / NFRAMES)) for i in range(NFRAMES)]
 for f in frames:
     assert reel_tiles(f, REEL_COLS[0]) == reel_tiles(f, REEL_COLS[1]), "reel blocks differ"
 NANIM = RB * RB
@@ -135,15 +142,16 @@ assert set(TEXT) <= set(TEXT_CHARS), "label text uses characters outside the sta
 
 anim_frames = [b''.join(reel_tiles(f, REEL_COLS[0])) for f in frames]
 
-screen = np.ones((24 * 8, 40 * 8), np.uint8)
+screen = np.zeros((24 * 8, 40 * 8), np.uint8)       # black background
 screen[CAS_Y * 8:CAS_Y * 8 + H, CAS_X * 8:CAS_X * 8 + W] = frames[0]
 free = iter(FREE)
-SOLID = next(free)
-chars = {bytes(8): 0, bytes([255] * 8): SOLID}     # blank = the standard space
-for ch in sorted(set(TEXT) - {' '}):                 # label letters at their standard codes
-    t = bytes(ATARI_ROM[ch])
+INVERSE = 0x80
+SOLID = INVERSE | 0                                 # inverse space: all white
+chars = {bytes(8): 0, bytes([255] * 8): SOLID}     # blank = the standard space: black
+for ch in sorted(set(TEXT) - {' '}):                 # label letters: black on the white label,
+    t = bytes(255 - b for b in ATARI_ROM[ch])       # so the inverse standard letters
     assert t not in chars
-    chars[t] = ord(ch) - 32
+    chars[t] = INVERSE | (ord(ch) - 32)
 scrfull = []
 for r in range(24):
     for c in range(40):
@@ -161,13 +169,14 @@ for r in range(24):
                 chars[t] = code
             code = chars[t]
         scrfull.append(code)
-graphics = sorted(c for c in chars.values() if c not in STANDARD)
+graphics = sorted(c for c in chars.values() if c & 0x7F not in STANDARD)
 assert not set(graphics) & STANDARD and not any(ANIM <= c < ANIM_B + NANIM for c in graphics)
 print(f'cassette chars: {len(graphics)} graphics of {len(FREE)} free codes, '
       f'{len(chars) - len(graphics)} standard, 2x{NANIM} reel')
 font = bytearray(1024)
 for t, code in chars.items():
-    font[code * 8:code * 8 + 8] = t
+    glyph = bytes(255 - b for b in t) if code & INVERSE else t
+    font[(code & 0x7F) * 8:(code & 0x7F) * 8 + 8] = glyph
 font[ANIM * 8:(ANIM + NANIM) * 8] = anim_frames[0]
 
 open('Intro.fnt', 'wb').write(font)
@@ -187,7 +196,7 @@ CAS_ANIMCHR_B = {ANIM_B}          ; first of {NANIM} animated chars of set B, fi
 CAS_ANIMLEN   = {NANIM * 8}        ; bytes copied per animation step
 CAS_FRAMESIZE = {NANIM * 8}
 CAS_NFRAMES   = {NFRAMES}
-CAS_SOLID     = {SOLID}         ; solid black char
+CAS_SOLID     = ${SOLID:02X}        ; solid white char: inverse space
 CAS_NGRAPHICS = {len(graphics)}          ; other cassette chars, of {len(FREE)} free codes
 CAS_X         = {CAS_X}
 CAS_Y         = {CAS_Y}
@@ -204,15 +213,17 @@ cas_screen:
 S = 3
 imgs = []
 for i in range(NFRAMES):
-    canvas = np.ones((192 + 32, 320 + 32), np.uint8)
+    canvas = np.zeros((192 + 32, 320 + 32), np.uint8)
     for r in range(24):
         for c in range(40):
             code = scrfull[r * 40 + c]
             src = anim_frames[i][(code - ANIM) * 8:(code - ANIM) * 8 + 8] if ANIM <= code < ANIM + NANIM \
-                else font[code * 8:code * 8 + 8]
+                else font[(code & 0x7F) * 8:(code & 0x7F) * 8 + 8]
+            if code & INVERSE:
+                src = bytes(255 - b for b in src)
             for yy in range(8):
                 for xx in range(8):
                     canvas[16 + r * 8 + yy, 16 + c * 8 + xx] = (src[yy] >> (7 - xx)) & 1
-    im = Image.fromarray(np.where(canvas, 0, 255).astype(np.uint8))
+    im = Image.fromarray(np.where(canvas, 255, 0).astype(np.uint8))   # white ink on black
     imgs.append(im.resize((im.width * S, im.height * S), Image.NEAREST).convert('P'))
 imgs[0].save('preview.gif', save_all=True, append_images=imgs[1:], duration=67, loop=0)

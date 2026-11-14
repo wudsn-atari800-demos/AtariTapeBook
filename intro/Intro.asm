@@ -21,6 +21,10 @@
 ; the OS font, the reel character sets at 64 and 80, the other cassette
 ; characters at the remaining codes.
 ;
+; Colours: white ink on black paper, so the blank character 0 fills the
+; background. The white label and windows use the inverse blank ($80), the
+; label letters are the inverse standard letters (black on white).
+;
 ; Entry points:
 ;   show      Copy the standard characters from the ROM font, save the OS
 ;             display and show the intro with its text, with the reels
@@ -33,7 +37,7 @@
 ;             is not copied; it must stay in place until "on". The initial
 ;             text is loading_text.
 ;
-; The text is shown in row 20, centred and inverse (white on black). Only
+; The text is shown in row 20, centred, white on black. Only
 ; space, "-.:", digits and uppercase letters are shown, any other character
 ; as a space; texts longer than TEXT_WIDTH are cut.
 ;
@@ -63,8 +67,8 @@ dst	= ZP_INTRO_DST
 SPEED	= 2		; VBIs per animation step, even (lower = faster)
 DIR	= 1		; 1 = clockwise (play), -1 = counter-clockwise (rewind)
 
-INK	= $00		; black ink ...
-PAPER	= $0E		; ... on white (only used inside the cassette)
+INK	= $0E		; white ink ...
+PAPER	= $00		; ... on black, so the blank character 0 fills the background
 BORDER	= $00		; black border
 
 SET_A	= CAS_ANIMCHR	; first char of the reel character set A (in Intro.fnt)
@@ -173,10 +177,10 @@ range_offset_hi	.byte >[13*8],>[16*8],>[33*8]
 range_length	.byte 2*8,11*8,26*8
 
 
-; Write the text centred and inverse into its row.
+; Write the text centred into its row.
 write_text
 	ldx #39
-	lda #CAS_SOLID
+	lda #0			; blank
 clear_row
 	sta text_line,x
 	dex
@@ -210,7 +214,6 @@ text_source
 	beq show_char
 blank	lda #0
 show_char
-	ora #$80		; inverse
 	sta text_line,y
 	iny
 	inx
