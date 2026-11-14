@@ -47,9 +47,9 @@ basic_syncer			; BASIC entry point
 ; Second stage: load the intro records that follow the boot records.
 	.proc preloader
 ptr	= ZP_LOADER_PTR
-LAST_BOOT_RECORD = load_address+[BOOT_RECORDS-1]*128
+LAST_BOOT_RECORD = load_address+[BOOT_RECORDS-1]*RECORD_SIZE
 
-	ldx #127		; AltirraOS reads one record more than announced; if the
+	ldx #RECORD_SIZE-1	; AltirraOS reads one record more than announced; if the
 compare				; original OS does not, the buffer still holds the last boot record
 	lda CASBUF_DATA,x
 	cmp LAST_BOOT_RECORD,x
@@ -59,14 +59,14 @@ compare				; original OS does not, the buffer still holds the last boot record
 	jsr read_record
 	bcs fail
 have_record
-	mwa #load_address+BOOT_RECORDS*128 ptr
+	mwa #load_address+BOOT_RECORDS*RECORD_SIZE ptr
 copy_record
-	ldy #127
+	ldy #RECORD_SIZE-1
 copy	lda CASBUF_DATA,y
 	sta (ptr),y
 	dey
 	bpl copy
-	adw ptr #128
+	adw ptr #RECORD_SIZE
 
 	lda shown		; show the intro as soon as its display is loaded
 	bne next_record
@@ -80,9 +80,9 @@ copy	lda CASBUF_DATA,y
 
 next_record
 	lda ptr
-	cmp #<[load_address+TOTAL_RECORDS*128]
+	cmp #<[load_address+TOTAL_RECORDS*RECORD_SIZE]
 	lda ptr+1
-	sbc #>[load_address+TOTAL_RECORDS*128]
+	sbc #>[load_address+TOTAL_RECORDS*RECORD_SIZE]
 	bcs done
 	jsr read_record
 	bcc copy_record
@@ -104,7 +104,7 @@ shown	.byte 0
 	.endp
 
 boot_end
-BOOT_RECORDS = [boot_end-load_address+127]/128
+BOOT_RECORDS = [boot_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
 
 	icl '../intro/Intro.asm'
 
@@ -259,7 +259,7 @@ wait_sio_0			; Wait until SIO=0 again
 	.endp
 
 image_end			; first free byte, MEMLO
-TOTAL_RECORDS = [image_end-load_address+127]/128
+TOTAL_RECORDS = [image_end-load_address+RECORD_SIZE-1]/RECORD_SIZE
 
 	ert basic_loader<>USR_LOADER	; BASIC programs call these addresses
 	ert basic_syncer<>USR_SYNCER

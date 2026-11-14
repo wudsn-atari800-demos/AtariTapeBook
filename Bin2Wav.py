@@ -155,6 +155,7 @@ def read_audio_mono16(path, rate):
     return samples
 
 
+RECORD_SIZE = 128           # data bytes of a cassette record, RECORD_SIZE in AtariTapeBookEquates.asm
 MARK_HZ = 5327
 SPACE_HZ = 3995
 CUE_PULSE_S = 0.335         # length of a cue pulse, as on the "Conversational" tapes
@@ -359,7 +360,7 @@ def verify_boot(wav_path, content, server_dir):
 
     load_addr = struct.unpack("<H", content[2:4])[0]
     loader_addr = load_addr + 6
-    announced = content[:min(len(content), content[1] * 128)]  # the records the OS loads itself
+    announced = content[:min(len(content), content[1] * RECORD_SIZE)]  # the records the OS loads itself
     proc, token_file = start_server(server_dir)
     ok = False
     try:

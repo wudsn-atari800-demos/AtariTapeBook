@@ -7,6 +7,7 @@
 
 ; OS and hardware values without an official name
 CASBUF_DATA = CASBUF+3		; data bytes of the record read by RBLOKV
+RECORD_SIZE = 128		; data bytes of a cassette record, also the unit of the boot header's record count
 HATAB_SIZE = 16			; size of a handler vector table, e.g. EDITRV
 START_MOTOR = $34		; PACTL value, cassette motor on
 STOP_MOTOR = $3C		; PACTL value, cassette motor off
