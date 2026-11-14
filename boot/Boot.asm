@@ -193,6 +193,8 @@ copy	lda CASBUF_DATA,y
 	bcc next_record
 	inc shown
 	jsr intro.show
+	mva #$00 SOUNDR		; $00 no sound
+
 	ldx #4			; "off" restores the colors from before the fade
 pass_color
 	mva title.colors,x intro.os_colors,x
