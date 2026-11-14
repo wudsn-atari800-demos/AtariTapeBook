@@ -43,7 +43,11 @@ If the boot file holds more records than its header announces (a two-stage
 boot file, see boot/Boot.asm), the first header byte, which the OS ignores for
 cassette boot, holds the record after which the pre-loader stops the motor and
 restarts it before it reads on.  The gap after that record is extended by
-BOOT_GAP_S of mark tone.
+BOOT_GAP_S of mark tone.  The boot section's .wav (for example boot/Boot.WAV
+next to boot/Boot.sec) is the narration while the intro loads: it starts
+NARRATION_DELAY_S into that gap, where the motor stops for the title, and
+must end before the end of the boot section, see
+plans/07_BOOT_NARRATION_PLAN.md.
 
 The Atari plays the left channel through the TV speaker while the tape motor
 runs.  The program must keep the motor running (POKE 54018,52) until the
@@ -168,6 +172,7 @@ CUE_PULSE_S = 0.335         # length of a cue pulse, as on the "Conversational" 
 CUE_MIN_DISTANCE_S = 1.0    # closer cues are hard to see for a BASIC loop
 CUE_SPIN_UP_S = 2.0         # keep the first cue away from the motor start
 AUDIO_LEAD_IN_S = 1.0       # silence before the audio of a run section, while the motor spins up
+NARRATION_DELAY_S = 1.0     # start of the boot narration after the start of the pause gap
 BOOT_GAP_S = 2.0            # extra mark tone where the pre-loader stops and restarts the motor (plan 03)
 
 
@@ -282,13 +287,15 @@ def mark_gaps(data, rate, count=None, min_seconds=0.1):
 def extend_gaps(load_wav, records, seconds):
     """Extend the gaps after the given records (counted from 1) of a GENCAS .wav by `seconds`
     of mark tone. The tone is continued by repeating whole periods of the gap's own tone,
-    starting and ending at a rising zero crossing, so the signal stays continuous."""
+    starting and ending at a rising zero crossing, so the signal stays continuous.
+    Return {record: first sample of the gap after it} in the extended .wav."""
     with wave.open(load_wav, "rb") as w:
         rate = w.getframerate()
         frames = array("h")
         frames.frombytes(w.readframes(w.getnframes()))
     data = frames[1::2]
     gaps = mark_gaps(data, rate, max(records) + 1)        # up to the gap after the last record
+    starts = {}
     for record in sorted(records, reverse=True):
         if record >= len(gaps):
             raise SystemExit(f"{load_wav}: no gap after record {record} found")
@@ -299,6 +306,7 @@ def extend_gaps(load_wav, records, seconds):
         period = data[rising[0]:rising[50]]                   # 50 whole periods
         tone = period * (int(seconds * rate) // len(period) + 1)
         data = data[:rising[0]] + tone + data[rising[0]:]
+        starts[record] = start                               # before every later insertion
     out = array("h", bytes(4 * len(data)))
     out[1::2] = data                                         # the left (audio) channel stays silent
     with wave.open(load_wav, "wb") as w:
@@ -306,6 +314,7 @@ def extend_gaps(load_wav, records, seconds):
         w.setsampwidth(2)
         w.setframerate(rate)
         w.writeframes(out.tobytes())
+    return starts
 
 
 def silence_eof_record(load_wav, level):
@@ -350,8 +359,10 @@ def silence_eof_record(load_wav, level):
     return (len(data) - eof_start) / rate, phase
 
 
-def add_audio_track(data_wav, audio_wav, output):
-    """Put `audio_wav` on the left channel of the stereo 16-bit data tape `data_wav`."""
+def add_audio_track(data_wav, audio_wav, output, offset_s=0.0, fit=False):
+    """Put `audio_wav` on the left channel of the stereo 16-bit data tape `data_wav`,
+    starting `offset_s` seconds into it.  With `fit`, the audio must end with the data;
+    otherwise the data track is extended with silence."""
     with wave.open(data_wav, "rb") as w:
         if (w.getnchannels(), w.getsampwidth()) != (2, 2):
             raise SystemExit(f"{data_wav}: expected a stereo 16-bit tape from GENCAS")
@@ -361,6 +372,11 @@ def add_audio_track(data_wav, audio_wav, output):
     data = frames[1::2]
     audio = read_audio_mono16(audio_wav, rate)
     data_seconds, audio_seconds = len(data) / rate, len(audio) / rate
+    if fit and offset_s + audio_seconds > data_seconds:
+        raise SystemExit(f"{audio_wav}: {audio_seconds:.1f} s, but only {data_seconds - offset_s:.1f} s "
+                         f"are available from {offset_s:.1f} s to the end of the section; shorten it by "
+                         f"{offset_s + audio_seconds - data_seconds:.1f} s")
+    audio = array("h", bytes(2 * int(offset_s * rate))) + audio
     n = max(len(data), len(audio))
     data.extend([0] * (n - len(data)))
     audio.extend([0] * (n - len(audio)))
@@ -518,6 +534,7 @@ def main():
                 gencas(args.turgen, ["-mode:plain", "-r", *gaps, "-o:wav", program, part])
                 gencas(args.turgen, ["-mode:plain", *(["-a"] if i else ["-r"]), *gaps, program, cas])
                 extended = ""
+                narration_s = None                     # start of the boot narration
                 announced = boot[1] if len(boot) >= 6 else 0
                 pause = boot[0] if len(boot) >= 6 else 0
                 if i == 0 and 0 < announced and len(boot) > announced * RECORD_SIZE:
@@ -526,16 +543,23 @@ def main():
                     if not announced < pause < (len(boot) + RECORD_SIZE - 1) // RECORD_SIZE:
                         raise SystemExit(f"{program}: pause record {pause} in the first header byte "
                                          f"is not a record the pre-loader reads")
-                    extend_gaps(part, [pause], BOOT_GAP_S)
+                    gap_start = extend_gaps(part, [pause], BOOT_GAP_S)[pause]
+                    with wave.open(part, "rb") as w:
+                        narration_s = gap_start / w.getframerate() + NARRATION_DELAY_S
                     extended = f", gap after record {pause} extended by {BOOT_GAP_S:.1f} s"
                 if rate is None:
                     rate, level = data_track_format(part)
                 if audio:
                     mixed = os.path.join(tmp, f"mixed{i}.wav")
-                    data_s, audio_s = add_audio_track(part, audio, mixed)
+                    data_s, audio_s = add_audio_track(part, audio, mixed, narration_s or 0.0, narration_s is not None)
                     part = mixed
-                    overview.append((max(data_s, audio_s), f"load {os.path.basename(program)}, records {data_s:.1f} s, "
-                                                           f"audio {os.path.basename(audio)} {audio_s:.1f} s"))
+                    if narration_s is None:
+                        audio_note = f"audio {os.path.basename(audio)} {audio_s:.1f} s"
+                    else:
+                        audio_note = (f"narration {os.path.basename(audio)} {audio_s:.1f} s from {narration_s:.1f} s, "
+                                      f"{data_s - narration_s - audio_s:.1f} s left")
+                    overview.append((max(data_s, audio_s), f"load {os.path.basename(program)}, records {data_s:.1f} s"
+                                                           f"{extended}, {audio_note}"))
                 else:
                     with wave.open(part, "rb") as w:
                         data_s = w.getnframes() / w.getframerate()
