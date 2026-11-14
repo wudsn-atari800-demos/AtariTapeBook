@@ -3,9 +3,30 @@
 Written 2026-11-14. Requested after the intro (`intro/`) was added and ported
 from ca65 to MADS.
 
-**Status: planned.** Done so far: the MADS port (`intro/Intro.asm`), which
-builds a `Intro.xex` byte-identical to the former ca65/ld65 build. Nothing
-of the integration below is implemented yet.
+**Status: executed 2026-11-14.** Before the plan, the intro was ported to
+MADS (`intro/Intro.asm`, byte-identical to the former ca65/ld65 build) and
+its files renamed from `cassette` to `Intro`. The target state below is
+updated to the executed state. Deviations from the plan as first written:
+
+- **Switching on and off is automatic.** The boot code's E: hook, which
+  types `CLOAD` and `RUN`, switches the intro on before `CLOAD` and off
+  when it starts typing `RUN`, because `CLOAD` is complete then. So the
+  intro shows while every chapter loads, and chapter programs need no USR
+  call (target state 9).
+- **The extra record read works either way.** The pre-loader compares the
+  cassette buffer with the last boot record. If they are equal, the OS did
+  not read the extra record, and the pre-loader reads it itself. The
+  original Atari OS is still untested, see "Open".
+- **The code is split around the font.** Only the pre-loader is in the
+  record the OS loads (`BOOT_RECORDS` = 1). The intro's display code and
+  variables follow below the font at $0800; the animation code, the label
+  letter copy, and the boot code that runs only after everything is loaded
+  (`booter`, the E: hook, the BASIC syncer) come after the reel frames.
+- **`gen.py` is unchanged.** The second set of reel characters is filled by
+  the VBI at run time, and `Intro.fnt` already holds the label letters, so
+  copying them from the ROM font moved from `show` to `start`.
+- **The VBI is longer than estimated** but stays below one bit: measured
+  1,670-1,750 cycles including the OS's part, see "Costs".
 
 ## Current state
 
@@ -48,33 +69,41 @@ routine at load address + 6 can read more records itself with `RBLOKV`
 
 ## Target state
 
-1. **Two-stage boot file on one tape file.** GENCAS writes one file: the
-   2 pre-loader records, followed directly by the intro's records, without
-   an EOF record in between. The header's record count announces only the
-   pre-loader records.
-2. **Pre-loader at load address + 6.** Because of step 4 above, the first
-   intro record is already at $0400 when the routine starts. It copies that
-   record, reads the remaining intro records with `RBLOKV` and copies each
-   one, and returns with carry set if a read fails. The motor must keep
-   running until the last intro record is read. With short gaps there are
-   only about 0.25 s between records, so the work between two reads stays
-   short (copying 128 bytes or setting up the display is far below that).
-3. **Progressive display.** The intro's records are ordered font, screen
-   map, code, reel frames. As soon as the font and the screen map are in,
-   the pre-loader switches on the intro's display, so the static cassette
-   appears before the reel frames have loaded. The animation starts when
-   the frames are complete.
-4. **Intro in low memory, protected by `MEMLO`.** The intro is assembled
-   from $0700, directly above the boot code: code at $0700-$07FF, font at
-   $0800 (1 KB aligned), then screen memory and data. `booter` raises
-   `MEMLO` above the intro before it starts BASIC, so BASIC's program area
-   starts above it. `CLOAD` relocates programs, because saved files store
-   their pointers relative to the program start. Fixed addresses work on
-   every RAM size, unlike an intro below `RAMTOP`.
+1. **Two-stage boot file on one tape file.** `boot/Boot.asm` includes the
+   intro and assembles both into one `Boot.sec`, which GENCAS writes as one
+   file. The header's record count announces only the pre-loader's record.
+2. **Pre-loader at load address + 6.** The routine at load address + 6
+   jumps to the pre-loader; the BASIC entry points stay at 1550 and 1554.
+   Because of step 4 above, the first intro record is normally already at
+   $0400; the pre-loader compares the buffer with the last boot record and
+   reads the record itself if the OS did not. It copies each record, reads
+   the next one with `RBLOKV` and returns with carry set if a read fails.
+   After the last intro record it reads the EOF record, so `CLOAD` starts
+   at the next file, then stops the motor.
+3. **Progressive display.** The image is ordered display code, font, display
+   list, screen map and letter table, reel frames, animation code. As soon
+   as everything up to the reel frames is loaded, the pre-loader calls
+   `intro.show`, so the static cassette appears while the last 8 records
+   load. When all records are in, it calls `intro.start`.
+4. **Intro in low memory, protected by `MEMLO`.** Memory layout:
+
+   | Part | Addresses |
+   |---|---|
+   | Boot record: header, BASIC entry points, pre-loader | $0600-$067D |
+   | Intro display code and variables | $067E-$0775 |
+   | Font (1 KB aligned) | $0800-$0BFF |
+   | Display list, screen map, letter table | $0C00-$1003 |
+   | Reel frames, animation code, frame table | $1004-$14FF |
+   | `booter`, E: hook, BASIC syncer | $1500-$15CA |
+
+   `booter` sets `MEMLO` to $15CB before it starts BASIC, so BASIC's program
+   area starts above everything. `CLOAD` relocates programs, because saved
+   files store their pointers relative to the program start. Fixed
+   addresses work on every RAM size, unlike an intro below `RAMTOP`.
 5. **`RESET` keeps the protection.** The OS resets `MEMLO` to $0700 on every
    `RESET`. `booter` sets `CASINI` to a small routine that only restores
-   `MEMLO`, and keeps `BOOT?` set, so the OS calls it on every `RESET`.
-   Today `booter` clears `BOOT?`.
+   `MEMLO`, and sets `BOOT?` to 2 instead of clearing it, so the OS calls
+   that routine on every `RESET`.
 6. **Own display list and screen memory.** The screen map is the intro's
    screen memory, so the 960-byte copy into `SAVMSC` is no longer needed.
    BASIC's start reopens the screen and resets `CHBAS`, so the VBI restores
@@ -93,50 +122,66 @@ routine at load address + 6 can read more records itself with `RBLOKV`
    - The font holds a second set of the 16 reel characters in its unused
      slots (78 of 128 characters are used), so no second 1 KB font is
      needed.
-   - The VBI copies the next frame into the hidden set in chunks of 64
-     bytes, one chunk per VBI.
-   - When the hidden set is complete, the VBI switches the 32 reel
-     positions in screen memory (two 4x4 blocks) to the other set, which
-     takes about 300 cycles.
-   - This keeps the current speed of one step every two VBIs and keeps the
-     VBI at about 0.6-0.8 ms.
-9. **Switching the intro off.** A chapter program calls a new USR entry
-   point in the boot code when it starts. It removes the VBI and restores
-   BASIC's display list and the ROM font. The intro's memory stays
+   - The VBI copies the next frame into the hidden set in two chunks, 48
+     bytes in the first VBI of a step and 80 bytes in the second.
+   - In the first VBI of a step, before its chunk, it switches the 32 reel
+     positions in screen memory (two 4x4 blocks) to the set completed last.
+   - This keeps the speed of one step every two VBIs (`SPEED` = 2).
+9. **Switching the intro on and off.** The E: hook in the boot code calls
+   `intro.on` before it types `CLOAD` and `intro.off` when it starts typing
+   `RUN`. `intro.off` removes the VBI and restores the display list, font
+   and colours that the VBI saved from the OS. The intro's memory stays
    reserved, because BASIC's program area cannot move down again.
 
 ## Impact
 
-- **`boot/Boot.asm`**: pre-loader at load address + 6, `MEMLO` and `CASINI`
-  handling in `booter`, the USR entry point to switch the intro off.
-- **`intro/Intro.asm`**: assembled from $0700 as a plain binary instead
-  of an executable, own display list, immediate VBI, chunked
-  double-buffered reel characters, no endless loop, no copy into `SAVMSC`.
-- **`intro/gen.py`**: the second set of reel characters in the font; the
-  record order font, screen map, code, frames.
-- **`Bin2Wav.py` / `Makefile.bat`**: the boot file and the intro become one
-  GENCAS input file, built from both assemblies.
-- **Chapter programs**: call the USR entry point to switch the intro off.
-- **Tests**: `test-chapters` gets the intro on its tape. A failing record or
-  wrong cue timing in the end-to-end test would show a VBI that is too
-  long. Altirra's profiler can measure the VBI's real length.
+- **`boot/Boot.asm`**: pre-loader, `MEMLO` and `CASINI` handling in
+  `booter`, intro on and off in the E: hook, the late code moved behind the
+  intro.
+- **`intro/Intro.asm`**: an include file with local labels (`intro.show`,
+  `intro.start`, `intro.on`, `intro.off`), own display list, immediate VBI,
+  chunked double-buffered reel characters, no endless loop, no copy into
+  `SAVMSC`. The new `intro/Intro-Demo.asm` builds the standalone
+  `Intro.xex`.
+- **`Bin2Wav.py`**: the boot check stops at load address + 6 and compares
+  only the announced boot records, because the intro changes itself after
+  loading. `Makefile.bat` is unchanged.
+- **Chapter programs**: unchanged.
+- **Tests**: `test-chapters` runs with the intro on its tape and also checks
+  that the intro is on screen while `C1.BAS` loads and off when it runs.
+
+## Verification
+
+- `TestChapters.bat` passes with the intro: all intro records load, `CLOAD`
+  finds `C1.BAS`, the cue spacing is unchanged.
+- Probes with AltirraBridge on the test tape and the real tape: the intro
+  appears while its last records load, animates while chapter 1 and
+  chapter 2 load, and is off while they run. `MEMLO` is $15CB after the
+  boot and after `RESET`.
+- The standalone `Intro.xex` runs and animates.
 
 ## Costs
 
 | Item | Value |
 |---|---|
-| Memory taken from BASIC | about 3.2 KB, less with the screen map used in place |
-| Additional loading time before the first chapter | about 26 records, roughly one minute at 600 baud with short gaps |
-| BASIC memory on a 16 KB Atari | about 13 KB without the intro, about 10 KB with it |
+| Memory taken from BASIC | 3.7 KB (`MEMLO` $15CB instead of $0700) |
+| Additional loading time before the first chapter | 31 records, 73 s at 600 baud with short gaps (boot section 100 s instead of 27 s) |
+| BASIC memory on a 16 KB Atari | about 13.3 KB without the intro, about 9.6 KB with it |
+| VBI length while a chapter loads, including the OS's part | 1,670-1,750 cycles, measured over 200 VBIs; one bit at 600 baud is about 2,950 cycles |
+
+The VBI can no longer make the OS miss a pair of edges in its speed
+measurement. If a VBI falls on the first or last measured edge, the
+measured speed can still be up to about 3% off; all loads in the emulator
+succeeded.
 
 ## Open
 
-- Verify step 4 of the boot sequence with the original Atari OS ROM. If the
-  original OS does not read the extra record, the pre-loader reads the
-  first intro record itself.
-- Whether the intro should already be visible while its own records load
-  (progressive display, see target state 3) or only from the first chapter
-  on.
-- Whether the extra loading time of about one minute is acceptable, or the
-  intro data should be made smaller first (only 78 of 128 characters are
-  used, and the screen map is mostly blank).
+- Verify the boot with the original Atari OS ROM. The pre-loader handles
+  both variants of step 4, but only AltirraOS was tested.
+- Verify on real hardware, in particular the speed measurement with the VBI
+  running (see "Costs").
+- Whether the extra loading time of 73 s is acceptable, or the intro data
+  should be made smaller (only 78 of 128 characters are used, and the
+  screen map is mostly blank).
+- About 140 bytes between the display code and the font at $0800 are
+  unused; the late boot code (203 bytes) does not fit there.

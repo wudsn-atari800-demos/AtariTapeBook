@@ -31,7 +31,9 @@ The test
    (SIO patch off) and reads the screen,
 4. checks that exactly three cues and DONE appear, with the cue spacing
    of C1A.TXT, and that the text of every section appears after the
-   previous cue and before its own cue.
+   previous cue and before its own cue,
+5. checks that the intro (intro/Intro.asm, loaded by the boot file) is on
+   screen while C1.BAS loads and off when it runs.
 
 The tape is kept as TestChapters.wav, so PlayChapters.bat can play it in Altirra.
 
@@ -70,14 +72,19 @@ def assemble_boot(tmp):
     if r.returncode != 0 or not os.path.exists(sec):
         sys.stderr.write(r.stdout + r.stderr)
         raise SystemExit("assembling boot/Boot.asm failed")
+    labels = {}
     with open(lab) as f:
-        m = re.search(r"^\S+\s+([0-9A-F]{4})\s+BASIC_SYNCER\s*$", f.read(), re.MULTILINE | re.IGNORECASE)
-    if not m:
-        raise SystemExit("label basic_syncer not found in boot/Boot.asm")
-    address = int(m.group(1), 16)
-    if address != SYNCER_ADDRESS:
-        raise SystemExit(f"basic_syncer is at {address}, but test-chapters/C1.BAS calls USR({SYNCER_ADDRESS})")
-    return sec
+        for line in f:
+            m = re.match(r"^\S+\s+([0-9A-F]{4})\s+(\S+)\s*$", line)
+            if m:
+                labels[m.group(2).upper()] = int(m.group(1), 16)
+    for name in ("BASIC_SYNCER", "INTRO.DLIST"):
+        if name not in labels:
+            raise SystemExit(f"label {name.lower()} not found in boot/Boot.asm")
+    if labels["BASIC_SYNCER"] != SYNCER_ADDRESS:
+        raise SystemExit(f"basic_syncer is at {labels['BASIC_SYNCER']}, "
+                         f"but test-chapters/C1.BAS calls USR({SYNCER_ADDRESS})")
+    return sec, labels["INTRO.DLIST"]
 
 
 CUE_FILE = os.path.join(TEST_DIR, "C1A.TXT")
@@ -189,14 +196,15 @@ def screen_lines(a):
     return lines
 
 
-def play_tape(tape, seconds):
-    """Play the tape and return {screen line: emulated time of its first appearance}."""
+def play_tape(tape, seconds, intro_dlist):
+    """Play the tape and return {screen line: emulated time of its first appearance} and the
+    emulated times at which the intro's display list was shown."""
     server_dir = Bin2Wav.folder_in_path("AltirraBridgeServer", "--server-dir")
     sys.path.insert(0, os.path.join(server_dir, "sdk", "python"))
     from altirra_bridge import AltirraBridge  # noqa: E402
 
     proc, token_file = Bin2Wav.start_server(server_dir)
-    seen = {}
+    seen, intro_times = {}, []
     try:
         with AltirraBridge.from_token_file(token_file) as a:
             a.config("basic", "on")
@@ -207,6 +215,8 @@ def play_tape(tape, seconds):
             step = 5
             for frame in range(0, int((seconds + TAPE_MARGIN_S) * fps), step):
                 a.frame(step)
+                if a.peek16(0x230) == intro_dlist:      # SDLSTL
+                    intro_times.append((frame + step) / fps)
                 for line in screen_lines(a):
                     if line and line not in seen:
                         seen[line] = (frame + step) / fps
@@ -218,7 +228,7 @@ def play_tape(tape, seconds):
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-    return seen
+    return seen, intro_times
 
 
 def main():
@@ -235,9 +245,9 @@ def main():
             raise SystemExit(f"test-chapters/{name} is missing; write it with --write-audio")
     tape = os.path.join(TEST_DIR, "TestChapters.wav")     # kept for PlayChapters.bat
     with tempfile.TemporaryDirectory() as tmp:
-        boot = assemble_boot(tmp)
+        boot, intro_dlist = assemble_boot(tmp)
         seconds = build_tape(boot, tape)
-        seen = play_tape(tape, seconds)
+        seen, intro_times = play_tape(tape, seconds, intro_dlist)
 
     for line, t in sorted(seen.items(), key=lambda item: item[1]):
         print(f"  {t:6.1f} s: {line}")
@@ -267,11 +277,18 @@ def main():
                 errors.append(f"the text of section {n} appeared at {min(shown):.1f} s, "
                               f"not between {previous:.1f} s and CUE {n} at {times[n - 1]:.1f} s")
             previous = times[n - 1]
+    # The intro is on screen while C1.BAS loads, between CLOAD and RUN, and off when it runs.
+    if "CLOAD" in seen and "RUN" in seen:
+        if not any(seen["CLOAD"] < t < seen["RUN"] for t in intro_times):
+            errors.append("the intro was not on screen while C1.BAS loaded")
+    if "SYNC TEST" in seen and any(t >= seen["SYNC TEST"] for t in intro_times):
+        errors.append("the intro was still on screen while C1.BAS ran")
     if errors:
         for e in errors:
             print("FAIL:", e)
         return 1
-    print(f"PASS: {CUES} section texts and cues in order with the expected spacing, then DONE")
+    print(f"PASS: intro shown while loading, {CUES} section texts and cues in order with the expected spacing, "
+          f"then DONE")
     return 0
 
 

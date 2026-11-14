@@ -13,9 +13,10 @@ the boot file's end-of-file record because it waits nine seconds after
 starting the motor before it reads.
 
 The script also builds the .cas image to list the records, then boots the
-.wav in the headless AltirraBridgeServer with a breakpoint on the boot file's
-init vector and compares the memory at the load address with the file
-content at that moment (before the boot code can modify itself).
+.wav in the headless AltirraBridgeServer with a breakpoint at the boot file's
+load address + 6, which the OS calls after loading the records announced in
+the boot header, and compares those records in memory with the file content
+at that moment (before the boot code can load more records or modify itself).
 
 The tape is a sequence of sections, given in tape order.  The first one is
 the boot file.  Every further section is given as a file or as a base name
@@ -356,7 +357,9 @@ def verify_boot(wav_path, content, server_dir):
     sys.path.insert(0, os.path.join(server_dir, "sdk", "python"))
     from altirra_bridge import AltirraBridge  # noqa: E402
 
-    load_addr, init_addr = struct.unpack("<HH", content[2:6])
+    load_addr = struct.unpack("<H", content[2:4])[0]
+    loader_addr = load_addr + 6
+    announced = content[:min(len(content), content[1] * 128)]  # the records the OS loads itself
     proc, token_file = start_server(server_dir)
     ok = False
     try:
@@ -364,21 +367,21 @@ def verify_boot(wav_path, content, server_dir):
             a.config("basic", "on")
             a.config("casautoboot", "on")
             a.config("siopatch", "off")             # load at real tape speed, like the project's Altirra runs
-            a.bp_set(init_addr)
+            a.bp_set(loader_addr)
             a.boot(os.path.abspath(wav_path))
-            for _ in range(120):                   # up to 100 s of emulated time
+            for _ in range(120):                   # up to 120 s of emulated time
                 a.frame(50)
-                if int(a.regs()["PC"].lstrip("$"), 16) == init_addr:
+                if int(a.regs()["PC"].lstrip("$"), 16) == loader_addr:
                     break
             else:
-                print(f"boot test: init vector ${init_addr:04X} was never reached")
+                print(f"boot test: load address + 6 (${loader_addr:04X}) was never reached")
                 a.quit()
                 return False
-            mem = a.peek(load_addr, len(content))
-            ok = mem == content
-            bad = [i for i in range(len(content)) if mem[i] != content[i]]
-            print(f"boot test: at init ${init_addr:04X} the {len(content)} bytes at ${load_addr:04X} "
-                  f"{'match the file' if ok else 'differ at offsets ' + str(bad[:10])}")
+            mem = a.peek(load_addr, len(announced))
+            ok = mem == announced
+            bad = [i for i in range(len(announced)) if mem[i] != announced[i]]
+            print(f"boot test: at ${loader_addr:04X} the {len(announced)} bytes of the announced boot records "
+                  f"at ${load_addr:04X} {'match the file' if ok else 'differ at offsets ' + str(bad[:10])}")
             a.quit()
     finally:
         try:
