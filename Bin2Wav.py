@@ -92,8 +92,22 @@ def folder_in_path(program, option):
 # GENCAS
 # ----------------------------------------------------------------------
 
+TURGEN_JAR = os.path.join("dist", "turgen.jar")      # GENCAS is a class in TURGEN's jar
+
+
+def turgen_folder():
+    """Return the TURGEN installation folder: build/turgen next to this script, which
+    Make-Setup.bat installs, or else a folder in the PATH that holds dist/turgen.jar."""
+    default = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build", "turgen")
+    for folder in [default, *os.environ.get("PATH", "").split(os.pathsep)]:
+        if folder and os.path.isfile(os.path.join(folder, TURGEN_JAR)):
+            return folder
+    raise SystemExit(f"TURGEN not found: {os.path.join(default, TURGEN_JAR)} does not exist and no folder in the "
+                     f"PATH holds {TURGEN_JAR}; run Make-Setup.bat or use --turgen")
+
+
 def gencas(turgen_dir, args):
-    jar = os.path.join(turgen_dir, "dist", "turgen.jar")
+    jar = os.path.join(turgen_dir, TURGEN_JAR)
     if not os.path.exists(jar):
         raise SystemExit(f"TURGEN not found: {jar}")
     cmd = ["java", "-cp", jar, "turgen.gencas.CLIGenCas", *args]
@@ -503,12 +517,13 @@ def main():
     p.add_argument("--cas", action="store_true", help="also keep the .cas image next to the .wav")
     p.add_argument("--mono", action="store_true", help="write 8-bit mono instead of GENCAS' stereo 16-bit")
     p.add_argument("--no-verify", action="store_true", help="skip the AltirraBridge boot test")
-    p.add_argument("--turgen", help="TURGEN installation folder (default: the folder of gencas in the PATH)")
+    p.add_argument("--turgen", help="TURGEN installation folder with dist/turgen.jar "
+                                    "(default: build/turgen, else a folder in the PATH)")
     p.add_argument("--server-dir",
                    help="folder containing AltirraBridgeServer.exe and sdk/ "
                         "(default: the folder of AltirraBridgeServer in the PATH)")
     args = p.parse_args()
-    args.turgen = args.turgen or folder_in_path("gencas", "--turgen")
+    args.turgen = args.turgen or turgen_folder()
 
     specs = list(args.files)
     output = specs.pop() if len(specs) > 1 and specs[-1].lower().endswith(".wav") else None
