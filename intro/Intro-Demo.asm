@@ -5,7 +5,7 @@
 ; Build (MADS):  python3 gen.py
 ;                mads Intro-Demo.asm -o:Intro.xex
 
-	icl '../SystemEquates.asm'
+	icl '../AtariTapeBookEquates.asm'
 
 	opt h+
 

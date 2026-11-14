@@ -17,17 +17,11 @@
 ; starts above it.
 
 
-HATAB_SIZE = 16
-START_MOTOR = $34
-STOP_MOTOR = $3c
-
-	icl '../SystemEquates.asm'
-
-CASBUF_DATA = CASBUF+3	; data bytes of the record read by RBLOKV
+	icl '../AtariTapeBookEquates.asm'
 
 	opt h-f+
 
-	org $0600
+	org BOOT_LOAD_ADDRESS
 
 load_address
 
@@ -38,7 +32,7 @@ load_address
 
 	jmp preloader		; called by the OS after the boot records
 
-	.rept 5			; keep the BASIC entry points at 1550 and 1554
+	.rept 5			; keep the BASIC entry points at USR_LOADER and USR_SYNCER
 	nop
 	.endr
 
@@ -52,7 +46,7 @@ basic_syncer			; BASIC entry point
 
 ; Second stage: load the intro records that follow the boot records.
 	.proc preloader
-ptr	= $CF			; free zero page, the intro uses $CB-$CE
+ptr	= ZP_LOADER_PTR
 LAST_BOOT_RECORD = load_address+[BOOT_RECORDS-1]*128
 
 	ldx #127		; AltirraOS reads one record more than announced; if the
@@ -214,6 +208,6 @@ wait_sio_0			; Wait until SIO=0 again
 image_end			; first free byte, MEMLO
 TOTAL_RECORDS = [image_end-load_address+127]/128
 
-	ert basic_loader<>1550		; BASIC programs call these addresses
-	ert basic_syncer<>1554
-	ert intro.font<>$0800		; else the font's alignment wastes memory
+	ert basic_loader<>USR_LOADER	; BASIC programs call these addresses
+	ert basic_syncer<>USR_SYNCER
+	ert intro.font<>INTRO_FONT_ADDRESS	; else the font's alignment wastes memory

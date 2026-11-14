@@ -41,11 +41,11 @@
 
 	.local intro
 
-; The OS and hardware equates come from SystemEquates.asm, which the main
-; source file includes.
+; The equates come from AtariTapeBookEquates.asm, which the main source file
+; includes.
 
-src	= $CB		; free zero page ($CB-$CE), used by show and the VBI
-dst	= $CD
+src	= ZP_INTRO_SRC	; used by show and the VBI
+dst	= ZP_INTRO_DST
 
 SPEED	= 2		; VBIs per animation step, even (lower = faster)
 DIR	= 1		; 1 = clockwise (play), -1 = counter-clockwise (rewind)
