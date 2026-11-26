@@ -99,7 +99,7 @@ no_inc_hi
 	mva #$12 CH		; Press ENTER
 	mva #$00 SOUNDR		; $00 no sound
 
-	jmp intro.on		; show the intro while the next file loads
+	jmp intro.turn_on	; show the intro while the next file loads
 
 	.proc read_char
 	ldy char_cnt
@@ -108,7 +108,7 @@ no_inc_hi
 not_last
 	cpy #RUN_INDEX		; CLOAD is done when RUN is typed:
 	bne not_run		; the program runs on BASIC's screen
-	jsr intro.off
+	jsr intro.turn_off
 	ldy char_cnt
 not_run
 	lda text,Y
