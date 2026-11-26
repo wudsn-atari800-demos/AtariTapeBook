@@ -16,7 +16,7 @@
 ; booter calls "load" to load the first chapter.
 ;
 ; Needs from the boot file: motor, wait, ZP_LOADER_PTR. Needs from the
-; intro: on, off, set_text, loading_text, TEXT_WIDTH.
+; intro: turn_on, turn_off, set_text, loading_text, TEXT_WIDTH.
 
 	.local loader
 

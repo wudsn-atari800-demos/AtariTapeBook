@@ -30,11 +30,13 @@
 ;             display and show the intro with its text, with the reels
 ;             standing still. Needs everything up to display_end loaded.
 ;   start     Start the reel animation. Needs everything loaded.
-;   on        Show the intro again after "off", with the current text.
-;   off       Restore the OS display list, font and colors.
-;   set_text  Set the text below the cassette for the next "on": X/Y =
+;   turn_on   Show the intro again after "turn_off", with the current text,
+;             and fade the ink in.
+;   turn_off  Fade the ink out, then restore the OS display list, font and
+;             colors.
+;   set_text  Set the text below the cassette for the next "turn_on": X/Y =
 ;             address (low/high) of an ATASCII text, A = its length. The text
-;             is not copied; it must stay in place until "on". The initial
+;             is not copied; it must stay in place until "turn_on". The initial
 ;             text is loading_text.
 ;
 ; The text is shown in row 20, centered, white on black. Only
@@ -99,15 +101,40 @@ dlist	.byte $70,$70,$70
 
 ; Display part: everything "show" and the VBI's display handling need.
 ; ---------------------------------------------------------------------------
-	.proc show		; continues in "on"
+; "show" sets the ink at once, without the fade of "turn_on": during the boot
+; it runs between two tape records, and waiting would miss the next one.
+	.proc show
 	jsr copy_rom_chars
+	jsr activate
+	mva #INK COLOR1
+	rts
 	.endp
 
+; Fade the ink in, unless the intro is shown already. Runs before CLOAD
+; starts the motor.
 	.proc turn_on
+	jsr activate
+	bcc already_active
+	ldx #0
+fade_in	lda #2
+	jsr wait
+	stx COLOR1
+	inx
+	cpx #INK+1
+	bne fade_in
+already_active
+	rts
+	.endp
+
+; Write the text. If the intro is not shown yet, save the OS display, set all
+; colors to black, install the VBI and return with the carry set; otherwise
+; return with the carry clear.
+	.proc activate
 	jsr write_text
 	lda active
-	bne already_active
-				; save the OS display, to restore it in "off"
+	clc
+	bne done
+				; save the OS display, to restore it in "turn_off"
 	mwa SDLSTL os_dlist
 	mva CHBAS os_chbas
 	ldx #4
@@ -126,18 +153,8 @@ save_color
 	ldx #>vbi
 	jsr SETVBV
 	mva #1 active
-	
-	ldx #0
-fade_in	lda #2
-	jsr wait
-	stx COLOR1
-	inx
-	cpx #INK+1
-	bne fade_in
-	
-	
-already_active
-	rts
+	sec
+done	rts
 	.endp
 
 ; ---------------------------------------------------------------------------
@@ -161,7 +178,9 @@ dlist_ok
 font_ok
 	mwa #dlist DLISTL
 	mva #>font CHBASE
-
+	mva COLOR1 COLPF1	; the colors too, also while "turn_on" and "turn_off" fade
+	mva COLOR2 COLPF2
+	mva COLOR4 COLBK
 	lda #$22		; normal playfield, display list DMA
 	sta SDMCTL
 	sta DMACTL
@@ -269,7 +288,7 @@ visible_set	.byte 0		; 0 = set A, 1 = set B
 base		.byte 0
 os_dlist	.word 0
 os_chbas	.byte 0
-os_colors	.ds 5		; COLOR0-COLOR4 of the OS, restored by "off"
+os_colors	.ds 5		; COLOR0-COLOR4 of the OS, restored by "turn_off"
 
 display_end			; everything "show" needs lies below
 
@@ -369,7 +388,7 @@ sum	.byte 0
 	.proc turn_off
 	lda active
 	beq off_done
-	lda #25
+	lda #50
 	jsr wait
 fade_loop
 	lda #2
@@ -390,7 +409,7 @@ restore_color
 	bpl restore_color
 	lda #0
 	sta active
-	sta animate.rate	; "on" starts with the reels standing still
+	sta animate.rate	; "turn_on" starts with the reels standing still
 off_done
 	rts
 	.endp

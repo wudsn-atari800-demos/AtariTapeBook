@@ -255,7 +255,7 @@ PAUSE_ADDRESS = load_address+PAUSE_RECORD*RECORD_SIZE
 	.proc show_intro
 	jsr intro.show
 
-	ldx #4			; "off" restores the colors from before the fade
+	ldx #4			; "turn_off" restores the colors from before the fade
 pass_color
 	mva fade.os_colors,x intro.os_colors,x
 	dex
