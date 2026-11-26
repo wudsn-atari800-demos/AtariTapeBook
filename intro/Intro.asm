@@ -67,11 +67,9 @@ dst	= ZP_INTRO_DST
 
 SPEED	= 2		; VBIs per animation step at full speed, even (lower = faster)
 RAMP_VBIS = 50		; VBIs from standstill to full speed and back, 1 s at 50 Hz
-DIR	= 1		; 1 = clockwise (play), -1 = counter-clockwise (rewind)
+DIR	= -1		; 1 = clockwise (play), -1 = counter-clockwise (rewind)
 
-INK	= $0E		; white ink ...
-PAPER	= $00		; ... on black, so the blank character 0 fills the background
-BORDER	= $00		; black border
+INK	= 15
 
 SET_A	= CAS_ANIMCHR	; first char of the reel character set A (in Intro.fnt)
 SET_B	= CAS_ANIMCHR_B	; first char of the reel character set B (filled at run time)
@@ -105,10 +103,10 @@ dlist	.byte $70,$70,$70
 	jsr copy_rom_chars
 	.endp
 
-	.proc on
+	.proc turn_on
 	jsr write_text
 	lda active
-	bne on_done
+	bne already_active
 				; save the OS display, to restore it in "off"
 	mwa SDLSTL os_dlist
 	mva CHBAS os_chbas
@@ -117,15 +115,30 @@ save_color
 	mva COLOR0,x os_colors,x
 	dex
 	bpl save_color
+
+	lda #$00		; set colors
+	sta COLOR1
+	sta COLOR2
+	sta COLOR4
+
 	lda #6			; immediate VBI
 	ldy #<vbi
 	ldx #>vbi
 	jsr SETVBV
 	mva #1 active
-on_done	rts
+	
+	ldx #0
+fade_in	lda #2
+	jsr wait
+	stx COLOR1
+	inx
+	cpx #INK+1
+	bne fade_in
+	
+	
+already_active
+	rts
 	.endp
-
-
 
 ; ---------------------------------------------------------------------------
 	.proc vbi
@@ -148,15 +161,7 @@ dlist_ok
 font_ok
 	mwa #dlist DLISTL
 	mva #>font CHBASE
-	lda #INK
-	sta COLOR1
-	sta COLPF1
-	lda #PAPER
-	sta COLOR2
-	sta COLPF2
-	lda #BORDER
-	sta COLOR4
-	sta COLBK
+
 	lda #$22		; normal playfield, display list DMA
 	sta SDMCTL
 	sta DMACTL
@@ -165,9 +170,10 @@ font_ok
 	sta CHACTL
 	lda #0
 	sta ATRACT
+
 	lda animating
 	beq vbi_exit
-	jmp animate		; loaded after the reel frames
+	jsr animate		; loaded after the reel frames
 vbi_exit
 	jmp SYSVBV
 	.endp
@@ -309,7 +315,7 @@ add_rate
 	mva #0 complete
 no_switch
 	ldx frame
-	.if DIR > 0
+	.if DIR = 1		; not DIR > 0: MADS stores -1 as $FFFFFFFF and compares unsigned
 	inx
 	cpx #CAS_NFRAMES
 	bcc frame_ok
@@ -329,7 +335,7 @@ copy_chunk0
 	dey
 	bpl copy_chunk0
 	mva #1 phase
-	jmp SYSVBV
+	rts
 
 second_chunk			; second VBI of a step: copy the rest of the frame
 	ldx frame
@@ -345,10 +351,10 @@ copy_chunk1
 	mva #0 phase
 	mva #1 complete
 anim_exit
-	jmp SYSVBV
+	rts
 keep_sum
 	sta sum
-	jmp SYSVBV
+	rts
 
 rate	.byte 0		; 0 = standstill, MAX_RATE = full speed
 sum	.byte 0
@@ -360,9 +366,17 @@ sum	.byte 0
 	rts
 	.endp
 
-	.proc off
+	.proc turn_off
 	lda active
 	beq off_done
+	lda #25
+	jsr wait
+fade_loop
+	lda #2
+	jsr wait
+	dec COLOR1
+	bne fade_loop
+
 	lda #6
 	ldy #<SYSVBV
 	ldx #>SYSVBV

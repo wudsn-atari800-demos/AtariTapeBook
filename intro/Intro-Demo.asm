@@ -27,6 +27,7 @@ loop	mva #START_MOTOR PACTL
 	lda #OFF_FRAMES
 	jsr wait
 	jmp loop
+	.endp
 
 	.proc wait		; wait A frames
 	clc
@@ -35,7 +36,6 @@ wait_frame
 	cmp RTCLOK+2
 	bne wait_frame
 	rts
-	.endp
 	.endp
 
 	run start

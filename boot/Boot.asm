@@ -142,18 +142,20 @@ loop	cmp RTCLOK+2
 	rts
 	.endp
 
-; Fade the boot screen to black and type the title, see plan 03.
-	.proc title
+	.proc fade
 FADE_FRAMES = 2			; frames per fade step
-TYPE_FRAMES = 2			; frames per typed letter
 
-	ldx #4			; keep the OS colors, the intro restores them in "off"
+	.proc save_and_fade_out
+	ldx #4			; keep the OS colors, the intro restores them in "turn_off"
 save_color
-	mva COLOR0,x colors,x
+	mva COLOR0,x os_colors,x
 	dex
 	bpl save_color
-
-fade	ldy #0			; number of colors not yet black
+	.endp
+	
+	.proc out
+lade_loop
+	ldy #0			; number of colors not yet black
 	ldx #4
 fade_color
 	lda COLOR0,x
@@ -164,8 +166,8 @@ fade_color
 	bcs darker
 	lda #0			; luminance 0 (also after 1 or 2): black, not the dark hue
 	beq store_color
-darker	lda COLOR0,x		; luminance down by 2, carry is set
-	sbc #2
+darker	lda COLOR0,x		; luminance down by 1, carry is set
+	sub #1
 store_color
 	sta COLOR0,x
 next_color
@@ -174,7 +176,19 @@ next_color
 	lda #FADE_FRAMES
 	jsr wait
 	tya
-	bne fade
+	bne lade_loop
+	rts
+	.endp			; end of out
+	
+os_colors	.ds 5				; COLOR0-COLOR4 before the fade
+	.endp			; end of fade
+
+; Fade the boot screen to black and type the title, see plan 03.
+	.proc title
+TYPE_FRAMES = 2			; frames per typed letter
+
+	jsr fade.save_and_fade_out
+	
 	mva #1 CRSINH		; no cursor
 	lda #$7D		; clear the screen
 	jsr put_char
@@ -218,7 +232,6 @@ text_end
 	.endl
 	.byte 0
 
-colors	.ds 5			; COLOR0-COLOR4 before the fade
 	.endp
 
 ; Stop the motor, fade the screen, type the title, restart the motor.
@@ -244,7 +257,7 @@ PAUSE_ADDRESS = load_address+PAUSE_RECORD*RECORD_SIZE
 
 	ldx #4			; "off" restores the colors from before the fade
 pass_color
-	mva title.colors,x intro.os_colors,x
+	mva fade.os_colors,x intro.os_colors,x
 	dex
 	bpl pass_color
 	lda #$7D		; clear the now hidden OS screen with the typed texts,
